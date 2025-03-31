@@ -74,7 +74,7 @@ func (h *YAMLHandler) applyIterators(key *yaml.Node, value *yaml.Node, field ref
 
 // Import will read encode node into the interface
 // NOTE: Entrypoint for YAMLHandler
-func (h *YAMLHandler) ImportAndDecode(node *yaml.Node, v interface{}) error {
+func (h *YAMLHandler) ImportAndDecode(node *yaml.Node, v any) error {
 	h.in = node
 
 	if err := node.Decode(v); err != nil {
@@ -89,7 +89,7 @@ func (h *YAMLHandler) ImportAndDecode(node *yaml.Node, v interface{}) error {
 //	It also preforms other magic! (preserves comments, performs minimally-invase updates)
 //
 // Exitpoint for YAMLHandler
-func (h *YAMLHandler) Update(v interface{}) error {
+func (h *YAMLHandler) Update(v any) error {
 	// h.Update(
 	// transferAllComments(in *yaml.Node, out *yaml.Node) -- Not needed since we have our own decoder
 	//
@@ -128,9 +128,10 @@ func (h *YAMLHandler) update(val reflect.Value, out *yaml.Node, shouldAdd bool) 
     uString(val, out)
   case reflect.Bool:
     uBool(val, out)
-  case reflect.Interface:
+  case reflect.Interface, reflect.Ptr:
     h.update(val.Elem(), out, shouldAdd)
-  case reflect.Slice:
+  case reflect.Slice, reflect.Array:
+    h.uSequence(val, out, shouldAdd)
     
   default:
     println("UNSUPPORTED TYPE!! ", val.Kind().String())
@@ -188,10 +189,9 @@ func (h *YAMLHandler) uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool)
       Value: yamlKey,
     }
 
-    // TODO: have update set the type correctly or something
     nv := &yaml.Node {
-      Kind: yaml.ScalarNode,
-      Value: "-",
+      Kind: determineNodeKind(v),
+      Value: "",
     }
 
     h.update(v, nv, true)
@@ -211,7 +211,7 @@ func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, lookup map[s
   var mi yit.Iterator
 
   for keyNode, ok := it(); ok; keyNode, ok = it() {
-    value, _ := it() // Should always be ok
+    value, _ := it()
     
     if IsMergeKey(keyNode) {
       // Store for later, explicit keys take priority
@@ -219,7 +219,7 @@ func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, lookup map[s
     }
 
     if fieldValue, ok := lookup[keyNode.Value]; ok {
-      h.update(fieldValue, ResolveAlias(value), shouldAdd)
+      h.update(fieldValue, resolveAlias(value), shouldAdd)
       delete(lookup, keyNode.Value)
     }
   }
@@ -229,10 +229,33 @@ func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, lookup map[s
   }
 }
 
-func uSequence(val reflect.Value, out *yaml.Node) {
-  // TODO: Determine how to handle this case, or don't...
-  // If it is a list of scalars, that is easy to perform comparisons
-  // If it is a mapping node, ...
+// NOTE: To properly remove an entry, set it to nil so we can still utilize the order/len
+func (h *YAMLHandler) uSequence(val reflect.Value, out *yaml.Node, shouldAdd bool) {
+  // Update in terms of order
+  length := min(len(out.Content), val.Len())
+  out.Content = out.Content[:length] // Potentially remove excess YAML nodes
+  
+  for i := range length {
+    e := val.Index(i)
+    h.update(e, out.Content[i], shouldAdd)
+  }
+
+  // Add new content
+  if !shouldAdd {
+    return
+  }
+
+  for i := len(out.Content); i < val.Len(); i++ {
+    e := val.Index(i)
+
+    n := &yaml.Node {
+      Kind: determineNodeKind(e),
+      Value: "",
+    }
+
+    h.update(e, n, true)
+    out.Content = append(out.Content, n)
+  }
 }
 
 func uInt(val reflect.Value, out *yaml.Node) {
@@ -246,3 +269,4 @@ func uString(val reflect.Value, out *yaml.Node) {
 func uBool(val reflect.Value, out *yaml.Node) {
   out.Value = fmt.Sprintf("%t", val.Bool())
 }
+

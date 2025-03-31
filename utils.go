@@ -40,13 +40,13 @@ func getStructFieldKey(field reflect.StructField) string {
   return k
 }
 
-func ResolveAlias(node *yaml.Node) *yaml.Node {
+func resolveAlias(node *yaml.Node) *yaml.Node {
 	if node == nil {
 		return nil
 	}
 
 	if node.Kind == yaml.AliasNode {
-		return ResolveAlias(node.Alias)
+		return resolveAlias(node.Alias)
 	}
 
 	return node
@@ -116,4 +116,17 @@ func TransferAllComments(in *yaml.Node, out *yaml.Node) {
 			TransferAllComments(sIn, sOut)
 		}
 	}
+}
+
+func determineNodeKind(v reflect.Value) yaml.Kind {
+  switch v.Kind() {
+  case reflect.Interface, reflect.Ptr:
+    return determineNodeKind(v.Elem())
+  case reflect.Slice, reflect.Array:
+    return yaml.SequenceNode
+  case reflect.Map, reflect.Struct:
+    return yaml.MappingNode
+  default:
+    return yaml.ScalarNode
+  }
 }

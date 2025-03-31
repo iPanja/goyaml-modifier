@@ -15,13 +15,13 @@ import (
 func FromMerge(v *yaml.Node) yit.Iterator {
   // <<: *alias
   if v.Kind == yaml.AliasNode {
-    return yit.FromNodes(v.Content...)
+    return yit.FromNodes(v.Alias.Content...)
   }
 
   // <<: [*alias_one, *alias_two, ...]
   its := make([]yit.Iterator, len(v.Content))
   for _, a := range v.Content {
-    its = append(its, yit.FromNodes(a.Content...))
+    its = append(its, yit.FromNodes(a.Alias.Content...))
   }
 
   return yit.FromIterators(its...)
