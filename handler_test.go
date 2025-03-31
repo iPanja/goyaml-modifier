@@ -24,13 +24,15 @@ func TestHandler(t *testing.T) {
 		Name string
 		B    string
 
-		Unused map[string]interface{} `yaml:",inline"`
+		//Unused map[string]interface{} `yaml:",inline"`
 	}
 	type config struct {
     Version    string `yaml:"version"`
 		Year       int
 		RandomBool bool `yaml:"random_bool"`
 		Seq        []emb
+    InlineStuff map[string]any `yaml:",inline"`
+    NewEntry string `yaml:"new_entry,omitempty"`
 	}
 
   
@@ -44,18 +46,26 @@ func TestHandler(t *testing.T) {
 
   var Doc struct {
     C config `yaml:"doc"`
-    Unused map[string]interface{} `yaml:",inline"`
+    // Unused map[string]interface{} `yaml:",inline"`
+    // TODO: Handle inline ^^
   }
 
+  contents := node.Content[0].Content[1] // Take care of document node until the library can handle it...
 	handler := YAMLHandler{}
-	handler.Import(&node, &Doc)
+	handler.ImportAndDecode(contents, &Doc.C)
 
 
 	println("Found version: ", Doc.C.Version)
 
   // MODIFY STRUCT & RE-UPDATE
   Doc.C.Version = "EVEN NEWER"
-  handler.Update(&Doc)
+  Doc.C.Year = 2029
+  Doc.C.InlineStuff = map[string]any {
+    "a": "b",
+    "c": "d",
+  }
+  Doc.C.NewEntry = "testing!!"
+  handler.Update(&Doc.C)
 
   fmt.Println("\nRESULTS:")
   if b, err := yaml.Marshal(handler.in); err != nil {

@@ -28,9 +28,13 @@ func getLookupValue(node *yaml.Node) string {
 
 func getStructFieldKey(field reflect.StructField) string {
   k := field.Name
+  k = strings.ToLower(k) // TODO: is this ok?
+
   tag := field.Tag.Get("yaml");
-  if tags := strings.Split(tag, ","); len(tags) > 0 {
-    k = tags[0]
+  if tag != "" {
+    if tags := strings.Split(tag, ","); len(tags) > 0 {
+      k = tags[0]
+    }
   }
 
   return k
@@ -52,14 +56,13 @@ func IsMergeKey(node *yaml.Node) bool {
   return node.Value == "<<" || node.Tag == "!!merge"
 }
 
-func MergeIterator(node *yaml.Node) func() *yaml.Node {
-  // TODO: Handle single alias OR sequence of aliases
-
-  return func() (node *yaml.Node) {
-    node = nil
-
-    return
-  }
+func IsInlineStructField(sf reflect.StructField) bool {
+    tags, ok := sf.Tag.Lookup("yaml") 
+    return ok && strings.Contains(tags, ",inline")
+}
+func IsOmitEmptyStructField(sf reflect.StructField) bool {
+    tags, ok := sf.Tag.Lookup("yaml") 
+    return ok && strings.Contains(tags, ",omitempty")
 }
 
 func TransferAllComments(in *yaml.Node, out *yaml.Node) {

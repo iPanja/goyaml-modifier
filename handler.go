@@ -3,7 +3,9 @@ package modifier
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
+	"github.com/dprotaso/go-yit"
 	"gopkg.in/yaml.v3"
 )
 
@@ -61,10 +63,18 @@ func (h *YAMLHandler) AddCommentHelper(lookup map[string]Comment, useYtags bool,
 	return h.AddNodeIterator(iter)
 }
 
+func (h *YAMLHandler) applyIterators(key *yaml.Node, value *yaml.Node, field reflect.StructField) {
+  ytags := strings.Split(field.Tag.Get("yaml"), ",")
+  htags := strings.Split(field.Tag.Get("mimo"), ",")
+
+  for _, f := range h.NodeIterators {
+    f(key, value, ytags, htags)
+  }
+}
+
 // Import will read encode node into the interface
-// TODO: Should we (deep) clone the node?
-// Entrypoint for YAMLHandler
-func (h *YAMLHandler) Import(node *yaml.Node, v interface{}) error {
+// NOTE: Entrypoint for YAMLHandler
+func (h *YAMLHandler) ImportAndDecode(node *yaml.Node, v interface{}) error {
 	h.in = node
 
 	if err := node.Decode(v); err != nil {
@@ -92,79 +102,137 @@ func (h *YAMLHandler) Update(v interface{}) error {
 		return fmt.Errorf("Expected a struct, got %v", val.Kind())
 	}
 
-	update(val, h.in)
+	h.update(val, h.in, true) // TODO: use an internal h.shouldAdd variable
 
 	return nil
 }
 
 // TODO: Build a flattened path to the node, to be passed to the iterator
-func update(val reflect.Value, out *yaml.Node, shouldAdd bool) {
+func (h *YAMLHandler) update(val reflect.Value, out *yaml.Node, shouldAdd bool) {
+  if out.Kind == yaml.DocumentNode {
+    h.update(val, out.Content[0], shouldAdd)
+    return
+  }
+
+  if !val.IsValid() {
+    println("NOT VALID!!! (idk)")
+    return
+  }
+
   switch val.Kind() {
   case reflect.Struct:
-    uStruct(val, out, shouldAdd)
+    h.uStruct(val, out, shouldAdd)
   case reflect.Int:
     uInt(val, out)
+  case reflect.String:
+    uString(val, out)
+  case reflect.Bool:
+    uBool(val, out)
+  case reflect.Interface:
+    h.update(val.Elem(), out, shouldAdd)
+  case reflect.Slice:
+    
+  default:
+    println("UNSUPPORTED TYPE!! ", val.Kind().String())
   }
 }
 
 
 // Indivial update methods
-func uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool) {
+func (h *YAMLHandler) uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool) {
   t := val.Type()
-  v := reflect.ValueOf(val)
 
   // Build Lookup Table on struct
-  lookup := make(map[string]interface{}, 0) // TODO: determine len for efficiency's sake
+  // YAML Tag ( or Struct Field Name) -> Struct Field's Value
+  lookup := make(map[string]reflect.Value, 0) // TODO: determine len for efficiency's sake
 
-  for i := range t.NumField() {
-    var field reflect.StructField
-    field = t.Field(i)
-    var value reflect.Value
-    value = v.Field(i)
+  fields := reflect.VisibleFields(t)
+  for _, field := range fields{
+    v := val.FieldByName(field.Name)
+    if tags, ok := field.Tag.Lookup("yaml"); ok && strings.Contains(tags, ",inline") && v.Kind() == reflect.Map {
+      // inline (map?)
+      // TODO: can an inline field be anything other than a map
+      iter := v.MapRange()
+      for iter.Next() {
+        mk := iter.Key()
+        mv := iter.Value()
 
-    lookup[getStructFieldKey(field)] = value
+        if IsOmitEmptyStructField(field) && mv.IsZero() {
+          continue
+        }
+
+        lookup[mk.String()] = mv
+      }
+    } else {
+      // Normal struct field
+      if IsOmitEmptyStructField(field) && v.IsZero() {
+        continue
+      }
+      lookup[getStructFieldKey(field)] = v
+    } 
 	}
 
-  // Attempt to update those fields present in the yaml.MappingNode
-  // TODO: Make this smarter! Resolve alias nodes & handle merge keys
-  for i := 0; i < len(out.Content); i += 2 {
-    key := out.Content[i]
-    if value, ok := lookup[key.Value]; !ok {
-      nv := out.Content[i+1]
-
-      update(reflect.ValueOf(value), nv, shouldAdd)
-      delete(lookup, key.Value)
-    }
-  }
+  // Update nodes that are found in the struct
+  it := yit.FromNodes(out.Content...)
+  h.updateMap(it, val, lookup, shouldAdd)
 
   // Add in the new fields
   if !shouldAdd {
     return
   }
 
-  nc := make([]*yaml.Node, len(lookup))
-  for i := range t.NumField() {
-    field := t.Field(i)
-
-    fieldKey := getStructFieldKey(field)
-    if value, ok := lookup[fieldKey]; ok {
-      nk := &yaml.Node {
-        Kind: yaml.ScalarNode,
-        Value: fieldKey,
-      }
-
-      var nv *yaml.Node
-      update(reflect.ValueOf(value), nv, true)
-
-      nc = append(nc, nk, nv)
+  nc := make([]*yaml.Node, 0)
+  for yamlKey, v := range lookup {
+    nk := &yaml.Node {
+      Kind: yaml.ScalarNode,
+      Value: yamlKey,
     }
+
+    // TODO: have update set the type correctly or something
+    nv := &yaml.Node {
+      Kind: yaml.ScalarNode,
+      Value: "-",
+    }
+
+    h.update(v, nv, true)
+    // we could delete, but there isn't much point unless we return the lookup map or something
+    nc = append(nc, nk, nv)
   }
 
   out.Content = append(out.Content, nc...)
 }
 
+
+// Utilizing a lookup table (node name -> struct field's value),
+// Update the fields found in the node iterator and then remove them from the lookup table.
+// 
+// Handles merge keys and aliases
+func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, lookup map[string]reflect.Value, shouldAdd bool) {
+  var mi yit.Iterator
+
+  for keyNode, ok := it(); ok; keyNode, ok = it() {
+    value, _ := it() // Should always be ok
+    
+    if IsMergeKey(keyNode) {
+      // Store for later, explicit keys take priority
+      mi = FromMerge(value)
+    }
+
+    if fieldValue, ok := lookup[keyNode.Value]; ok {
+      h.update(fieldValue, ResolveAlias(value), shouldAdd)
+      delete(lookup, keyNode.Value)
+    }
+  }
+
+  if mi != nil {
+    h.updateMap(mi, val, lookup, shouldAdd)
+  }
+}
+
 func uSequence(val reflect.Value, out *yaml.Node) {
   // TODO: Determine how to handle this case, or don't...
+  // If it is a list of scalars, that is easy to perform comparisons
+  // If it is a mapping node, ...
 }
 
 func uInt(val reflect.Value, out *yaml.Node) {
@@ -176,5 +244,5 @@ func uString(val reflect.Value, out *yaml.Node) {
 }
 
 func uBool(val reflect.Value, out *yaml.Node) {
-  out.Value = fmt.Sprintf("%t", val.Bool)
+  out.Value = fmt.Sprintf("%t", val.Bool())
 }
