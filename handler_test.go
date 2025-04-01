@@ -5,6 +5,7 @@ import (
 
 	"gopkg.in/yaml.v3"
   "github.com/stretchr/testify/assert"
+  "reflect"
 )
 
 
@@ -224,4 +225,82 @@ func loadAndSetup(t *testing.T, yamlData string, v any) *YAMLHandler {
 
   return &handler
 
+}
+
+// TODO: Implement & Test on Mapping, Structs
+// Also test nil/removing entries on both of those types
+func TestUSequence(t *testing.T) {
+  nodeFn := func() *yaml.Node {
+    return &yaml.Node {
+      Kind: yaml.SequenceNode,
+      Content: []*yaml.Node {
+        scalarNode("a"),
+        scalarNode("b"),
+        scalarNode("c"),
+      },
+    }
+  }
+
+  var tests = []struct {
+    name string
+    seq []any
+    isValid func(t *testing.T, n *yaml.Node)
+  }{
+    {
+      name: "Standard upate",
+      seq: []any{"a", "LALALAL", "c"},
+      isValid: func(t *testing.T, n *yaml.Node) {
+        assert.Equal(t, len(n.Content), 3)
+        assert.Equal(t, n.Content[1].Value, "LALALAL")
+      },
+    },
+    {
+      name: "Adding new node",
+      seq: []any{"a", "b", "c", "d"},
+      isValid: func(t *testing.T, n *yaml.Node) {
+        assert.Equal(t, len(n.Content), 4)
+        assert.Equal(t, n.Content[3].Value, "d")
+      },
+    },
+    {
+      name: "Removing end node",
+      seq: []any{"a", "b"},
+      isValid: func(t *testing.T, n *yaml.Node) {
+        assert.Equal(t, len(n.Content), 2)
+        assert.Equal(t, n.Content[0].Value, "a")
+        assert.Equal(t, n.Content[1].Value, "b")
+      },
+    },
+    {
+      name: "Removing middle node via nil pointer",
+      seq: []any{"a", nil, "c"},
+      isValid: func(t *testing.T, n *yaml.Node) {
+        assert.Equal(t, len(n.Content), 2)
+        assert.Equal(t, n.Content[0].Value, "a")
+        assert.Equal(t, n.Content[1].Value, "c")
+      },
+    },
+  }
+
+
+  for _, tt := range tests {
+    n := nodeFn()
+    s := tt.seq
+
+    h := YAMLHandler{
+      in: n,
+    }
+
+    h.uSequence(reflect.ValueOf(s), n, true)
+
+
+    tt.isValid(t, n)
+  }
+}
+
+func scalarNode(v string) *yaml.Node {
+  return &yaml.Node {
+    Kind: yaml.ScalarNode,
+    Value: v,
+  }
 }

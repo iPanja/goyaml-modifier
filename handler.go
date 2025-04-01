@@ -224,8 +224,15 @@ func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, lookup map[s
     }
   }
 
+  // NOTE: Perhaps call trimContents(...) here?
+  // ISSUE: We don't have access to the underlying node since we only have the iterator...
+
   if mi != nil {
     h.updateMap(mi, val, lookup, shouldAdd)
+    // NOTE: Perhaps call trimContents(...) here
+    // HACK: Create a crawler at the end of the update() method 
+    //  that can handle removing nil cases appropriately
+    //  depending on the reflect.Type (map, slice, scalar, etc)
   }
 }
 
@@ -237,8 +244,14 @@ func (h *YAMLHandler) uSequence(val reflect.Value, out *yaml.Node, shouldAdd boo
   
   for i := range length {
     e := val.Index(i)
+
+    if ShouldSkipSliceEntry(e) { // Allow explicit deletion of entries via nil pointer
+      continue // Why waste time...
+    }
+
     h.update(e, out.Content[i], shouldAdd)
   }
+
 
   // Add new content
   if !shouldAdd {
@@ -256,6 +269,9 @@ func (h *YAMLHandler) uSequence(val reflect.Value, out *yaml.Node, shouldAdd boo
     h.update(e, n, true)
     out.Content = append(out.Content, n)
   }
+
+  // Deal with node removal (if one is set to nil)
+  trimContents(val, out)
 }
 
 func uInt(val reflect.Value, out *yaml.Node) {
@@ -270,3 +286,29 @@ func uBool(val reflect.Value, out *yaml.Node) {
   out.Value = fmt.Sprintf("%t", val.Bool())
 }
 
+// trimContents will remove entries from node.Content if they are a nil pointer
+// NOTE: To be depreciated with the implementation of trimNilNodes()
+func trimContents(val reflect.Value, out *yaml.Node) {
+  c := []*yaml.Node{}
+  for i, n := range out.Content {
+    e := val.Index(i)
+
+    if !ShouldSkipSliceEntry(e) {
+      c = append(c, n)
+    }
+  }
+
+  // Only modify if we need to
+  if len(c) != len(out.Content) {
+    out.Content = c
+  }
+}
+
+// trimNilNodes will recursively iterate through the node and remove those who's value are nil
+//
+//  - scalar: nil (scalar)
+//  - key: nil (map)
+//  - nil (slice)
+func trimNilNodes(node *yaml.Node) {
+  // TODO: IMPLEMENT & CALL
+}
