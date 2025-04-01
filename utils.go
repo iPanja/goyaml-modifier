@@ -64,7 +64,7 @@ func IsOmitEmptyStructField(sf reflect.StructField) bool {
     tags, ok := sf.Tag.Lookup("yaml") 
     return ok && strings.Contains(tags, ",omitempty")
 }
-func ShouldSkipSliceEntry(v reflect.Value) bool {
+func ShouldSkipField(v reflect.Value) bool {
   switch v.Kind() {
   case reflect.Slice, reflect.Array, reflect.Interface:
     return v.IsNil()

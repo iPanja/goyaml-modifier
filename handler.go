@@ -122,6 +122,8 @@ func (h *YAMLHandler) update(val reflect.Value, out *yaml.Node, shouldAdd bool) 
   switch val.Kind() {
   case reflect.Struct:
     h.uStruct(val, out, shouldAdd)
+  case reflect.Map:
+    h.uMap(val, out, shouldAdd)
   case reflect.Int:
     uInt(val, out)
   case reflect.String:
@@ -140,6 +142,35 @@ func (h *YAMLHandler) update(val reflect.Value, out *yaml.Node, shouldAdd bool) 
 
 
 // Indivial update methods
+
+// node.Content is modified to reflect the state of val
+// Explicit: true => out.Content will only contain k, v pairs present in (the map) val
+//  All other nodes will be removed
+func (h *YAMLHandler) uMap(val reflect.Value, out *yaml.Node, shouldAdd bool) {
+  // Build Lookup Table on struct
+  // Map Key -> Value (reflect)
+  // TODO: is there a magic one-liner for this?
+  lookup := make(map[string]reflect.Value, 0)
+ 
+  iter := val.MapRange()
+  for iter.Next() {
+    mk := iter.Key()
+    mv := iter.Value()
+
+    if ShouldSkipField(mv) && mv.IsZero() { // Ideally you would just remove it from the map altogether...
+      continue
+    }
+
+    lookup[mk.String()] = mv
+  }
+
+  h.updateMap(yit.FromNodes(out.Content...), val, out, lookup, shouldAdd, true)
+
+  nc := h.createRemainingNodes(lookup)
+  out.Content = append(out.Content, nc...)
+}
+
+// Explicit: false => Existing nodes that were not in the struct will be left untouched (they will persist)
 func (h *YAMLHandler) uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool) {
   t := val.Type()
 
@@ -153,7 +184,7 @@ func (h *YAMLHandler) uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool)
     if tags, ok := field.Tag.Lookup("yaml"); ok && strings.Contains(tags, ",inline") && v.Kind() == reflect.Map {
       // inline (map?)
       // TODO: can an inline field be anything other than a map
-      iter := v.MapRange()
+      iter := v.MapRange() // ISSUE: Do a type check first
       for iter.Next() {
         mk := iter.Key()
         mv := iter.Value()
@@ -175,13 +206,18 @@ func (h *YAMLHandler) uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool)
 
   // Update nodes that are found in the struct
   it := yit.FromNodes(out.Content...)
-  h.updateMap(it, val, lookup, shouldAdd)
+  h.updateMap(it, val, out, lookup, shouldAdd, false)
 
   // Add in the new fields
   if !shouldAdd {
     return
   }
 
+  nc := h.createRemainingNodes(lookup)
+  out.Content = append(out.Content, nc...)
+}
+
+func (h *YAMLHandler) createRemainingNodes(lookup map[string]reflect.Value) []*yaml.Node {
   nc := make([]*yaml.Node, 0)
   for yamlKey, v := range lookup {
     nk := &yaml.Node {
@@ -199,79 +235,92 @@ func (h *YAMLHandler) uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool)
     nc = append(nc, nk, nv)
   }
 
-  out.Content = append(out.Content, nc...)
+  return nc
 }
 
 
 // Utilizing a lookup table (node name -> struct field's value),
 // Update the fields found in the node iterator and then remove them from the lookup table.
+// Delete key, value pairs if the value is nil
 // 
 // Handles merge keys and aliases
-func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, lookup map[string]reflect.Value, shouldAdd bool) {
-  var mi yit.Iterator
+func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, out *yaml.Node, lookup map[string]reflect.Value, shouldAdd bool, explicit bool) {
+  c := []*yaml.Node{}
+  mvs := []*yaml.Node{} // Merge values
 
   for keyNode, ok := it(); ok; keyNode, ok = it() {
     value, _ := it()
     
     if IsMergeKey(keyNode) {
       // Store for later, explicit keys take priority
-      mi = FromMerge(value)
+      mvs = append(mvs, value)
     }
 
     if fieldValue, ok := lookup[keyNode.Value]; ok {
+      if ShouldSkipField(fieldValue) {
+        continue
+      }
+
       h.update(fieldValue, resolveAlias(value), shouldAdd)
       delete(lookup, keyNode.Value)
+      c = append(c, keyNode, value)
+    } else if !explicit {
+      // If explicit is disabled, we still want to keep nodes that are not getting updated
+      c = append(c, keyNode, value)
     }
   }
 
-  // NOTE: Perhaps call trimContents(...) here?
-  // ISSUE: We don't have access to the underlying node since we only have the iterator...
-
-  if mi != nil {
-    h.updateMap(mi, val, lookup, shouldAdd)
-    // NOTE: Perhaps call trimContents(...) here
-    // HACK: Create a crawler at the end of the update() method 
-    //  that can handle removing nil cases appropriately
-    //  depending on the reflect.Type (map, slice, scalar, etc)
+  // Handle (multiple) merge keys
+  for _, mv := range mvs {
+    mi := FromMerge(mv)
+    h.updateMap(mi, val, mv, lookup, shouldAdd, explicit)
   }
+
+  out.Content = c
 }
 
-// NOTE: To properly remove an entry, set it to nil so we can still utilize the order/len
+// node.Content is modified to reflect the state of val
+//
+// Overwrite nodes that share an index
+// Delete excess nodes (delete out.Content[i] if i > val.Len())
+// Delete nodes who's value is nil
 func (h *YAMLHandler) uSequence(val reflect.Value, out *yaml.Node, shouldAdd bool) {
-  // Update in terms of order
-  length := min(len(out.Content), val.Len())
-  out.Content = out.Content[:length] // Potentially remove excess YAML nodes
-  
-  for i := range length {
-    e := val.Index(i)
+  c := []*yaml.Node{}
 
-    if ShouldSkipSliceEntry(e) { // Allow explicit deletion of entries via nil pointer
-      continue // Why waste time...
+  for i := range(max(len(out.Content), val.Len())) {
+    inC := i < len(out.Content)
+    inV := i < val.Len()
+
+    if inC && inV {
+      // Overwriting out.Content[i]
+      e := val.Index(i)
+      if ShouldSkipField(e) {
+        continue
+      }
+
+      h.update(e, out.Content[i], shouldAdd)
+      c = append(c, out.Content[i])
+    } else if inC {
+      // We have exhausted val, skip the remaining nodes from out.Content
+      break
+    } else {
+      // Adding new node from val
+      e := val.Index(i)
+      if ShouldSkipField(e) {
+        continue
+      }
+
+      n := &yaml.Node {
+        Kind: determineNodeKind(e),
+        Value: "",
+      }
+
+      h.update(e, n, true)
+      c = append(c, n)
     }
-
-    h.update(e, out.Content[i], shouldAdd)
   }
 
-
-  // Add new content
-  if !shouldAdd {
-    return
-  }
-
-  for i := len(out.Content); i < val.Len(); i++ {
-    e := val.Index(i)
-
-    n := &yaml.Node {
-      Kind: determineNodeKind(e),
-      Value: "",
-    }
-
-    h.update(e, n, true)
-    out.Content = append(out.Content, n)
-  }
-
-  // Deal with node removal (if one is set to nil)
-  trimContents(val, out)
+  out.Content = c
 }
 
 func uInt(val reflect.Value, out *yaml.Node) {
@@ -293,7 +342,7 @@ func trimContents(val reflect.Value, out *yaml.Node) {
   for i, n := range out.Content {
     e := val.Index(i)
 
-    if !ShouldSkipSliceEntry(e) {
+    if !ShouldSkipField(e) {
       c = append(c, n)
     }
   }
@@ -304,11 +353,22 @@ func trimContents(val reflect.Value, out *yaml.Node) {
   }
 }
 
-// trimNilNodes will recursively iterate through the node and remove those who's value are nil
+// trimNilNodes will recursively iterate through the node and remove those marked for removal (tag == "!!remove")
 //
 //  - scalar: nil (scalar)
 //  - key: nil (map)
 //  - nil (slice)
 func trimNilNodes(node *yaml.Node) {
   // TODO: IMPLEMENT & CALL
+  result := []*yaml.Node{}
+  
+  for _, n := range node.Content {
+    if n.Tag != "!!remove" {
+      result = append(result, n)
+    }
+  }
+
+  if len(result) != len(node.Content) {
+    node.Content = result
+  }
 }

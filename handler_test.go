@@ -6,6 +6,8 @@ import (
 	"gopkg.in/yaml.v3"
   "github.com/stretchr/testify/assert"
   "reflect"
+  "github.com/dprotaso/go-yit"
+
 )
 
 
@@ -250,51 +252,138 @@ func TestUSequence(t *testing.T) {
       name: "Standard upate",
       seq: []any{"a", "LALALAL", "c"},
       isValid: func(t *testing.T, n *yaml.Node) {
-        assert.Equal(t, len(n.Content), 3)
-        assert.Equal(t, n.Content[1].Value, "LALALAL")
+        assert.Equal(t, 3, len(n.Content))
+        assert.Equal(t, "LALALAL", n.Content[1].Value)
       },
     },
     {
-      name: "Adding new node",
-      seq: []any{"a", "b", "c", "d"},
+      name: "Adding new nodes",
+      seq: []any{"a", "b", "c", "d", "e"},
       isValid: func(t *testing.T, n *yaml.Node) {
-        assert.Equal(t, len(n.Content), 4)
-        assert.Equal(t, n.Content[3].Value, "d")
+        assert.Equal(t, 5, len(n.Content), 5)
+        assert.Equal(t, "d", n.Content[3].Value)
+        assert.Equal(t, "e", n.Content[4].Value)
       },
     },
     {
       name: "Removing end node",
       seq: []any{"a", "b"},
       isValid: func(t *testing.T, n *yaml.Node) {
-        assert.Equal(t, len(n.Content), 2)
-        assert.Equal(t, n.Content[0].Value, "a")
-        assert.Equal(t, n.Content[1].Value, "b")
+        assert.Equal(t, 2, len(n.Content))
+        assert.Equal(t, "a", n.Content[0].Value)
+        assert.Equal(t, "b", n.Content[1].Value)
       },
     },
     {
       name: "Removing middle node via nil pointer",
       seq: []any{"a", nil, "c"},
       isValid: func(t *testing.T, n *yaml.Node) {
-        assert.Equal(t, len(n.Content), 2)
-        assert.Equal(t, n.Content[0].Value, "a")
-        assert.Equal(t, n.Content[1].Value, "c")
+        assert.Equal(t, 2, len(n.Content))
+        assert.Equal(t, "a", n.Content[0].Value)
+        assert.Equal(t, "c", n.Content[1].Value)
+      },
+    },
+    {
+      name: "Remove all nodes without nil",
+      seq: []any{},
+      isValid: func(t *testing.T, n *yaml.Node) {
+        assert.Equal(t, 0, len(n.Content))
+      },
+    },
+    {
+      name: "Remove multiple nodes with nil and add new",
+      seq: []any {nil, nil, nil, "a"},
+      isValid: func(t *testing.T, n *yaml.Node) {
+        assert.Equal(t, 1, len(n.Content))
+        assert.Equal(t, "a", n.Content[0].Value)
       },
     },
   }
 
 
   for _, tt := range tests {
-    n := nodeFn()
-    s := tt.seq
+    t.Run(tt.name, func(t *testing.T) {
+      n := nodeFn()
+      s := tt.seq
 
-    h := YAMLHandler{
-      in: n,
+      h := YAMLHandler{
+        in: n,
+      }
+
+      h.uSequence(reflect.ValueOf(s), n, true)
+
+
+      tt.isValid(t, n)
+    })
+  }
+}
+
+func TestUMap(t *testing.T) {
+  nodeFn := func() *yaml.Node {
+    return &yaml.Node {
+      Kind: yaml.MappingNode,
+      Content: []*yaml.Node {
+        scalarNode("a"),
+        scalarNode("b"),
+        scalarNode("c"),
+        scalarNode("d"),
+      },
     }
+  }
 
-    h.uSequence(reflect.ValueOf(s), n, true)
+  var tests = []struct {
+    name string
+    mapping map[string]any
+    isValid func(t *testing.T, n *yaml.Node)
+  }{
+    {
+      name: "Standard upate",
+      mapping: map[string]any {
+        "a": "new",
+        "e": "f",
+      },
+      isValid: func(t *testing.T, n *yaml.Node) {
+        assert.Equal(t, []any{"a", "new", "e", "f"}, mapValues(yit.FromNodes(n.Content...)))
+      },
+    },
+    {
+      name: "Remove via nil",
+      mapping: map[string]any {
+        "a": "new",
+        "c": nil,
+      },
+      isValid: func(t *testing.T, n *yaml.Node) {
+        assert.Equal(t, []any{"a", "new"}, mapValues(yit.FromNodes(n.Content...)))
+      },
+    },
+    {
+      name: "Adding a bunch",
+      mapping: map[string]any {
+        "new": "thing",
+        "a": "b",
+        "c": nil,
+        "another": "pair",
+        "wahaha": "hi",
+      },
+      isValid: func(t *testing.T, n *yaml.Node) {
+        assert.ElementsMatch(t, []any{"new", "thing", "a", "b", "another", "pair", "wahaha", "hi"}, mapValues(yit.FromNodes(n.Content...)))
+      },
+    },
+  }
 
+  for _, tt := range tests {
+    t.Run(tt.name, func(t *testing.T) {
+      n := nodeFn()
+      m := tt.mapping
 
-    tt.isValid(t, n)
+      h := YAMLHandler{
+        in: n,
+      }
+
+      h.uMap(reflect.ValueOf(m), n, true)
+
+      tt.isValid(t, n)
+    })
   }
 }
 
@@ -303,4 +392,20 @@ func scalarNode(v string) *yaml.Node {
     Kind: yaml.ScalarNode,
     Value: v,
   }
+}
+
+func mapValues(it yit.Iterator) []any {
+  result := []any{}
+
+  for key, ok := it(); ok; key, ok = it() {
+    value, _ := it()
+
+    if IsMergeKey(key) {
+      result = append(result, mapValues(FromMerge(value)))
+    } else {
+      result = append(result, key.Value, value.Value)
+    }
+  }
+
+  return result
 }

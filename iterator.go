@@ -26,3 +26,4 @@ func FromMerge(v *yaml.Node) yit.Iterator {
 
   return yit.FromIterators(its...)
 }
+
