@@ -44,8 +44,8 @@ h.Update(v)
 #### Example 1
 
 ```yaml
+var: &name Somebody
 data:
-  var: &name Somebody
   name: *name
   year: 2020
 ```
@@ -78,7 +78,6 @@ another: &ref2
   Year: 2021
 data:
   <<: [*ref, *ref2]
-
-```
+  new_random_entry: hello!
 
 ```
