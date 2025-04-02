@@ -2,6 +2,7 @@ package modifier
 
 import (
 	"testing"
+  "os"
 
 	"gopkg.in/yaml.v3"
   "github.com/stretchr/testify/assert"
@@ -387,6 +388,126 @@ func TestUMap(t *testing.T) {
   }
 }
 
+func TestEverything(t *testing.T) {
+  
+  type Base struct {
+    Name  string `yaml:"name"`
+    Value int    `yaml:"value"`
+  }
+
+  type Extended struct {
+    Base     `yaml:",inline"`
+    Extra    string `yaml:"extra"`
+    Override int    `yaml:"override,omitempty"`
+  }
+
+  type DeeplyNested struct {
+    Level1 struct {
+      Level2 struct {
+        Level3 struct {
+          Level4 struct {
+            Value string `yaml:"value"`
+            List  []int  `yaml:"list"`
+          } `yaml:"level4"`
+          AnotherLevel3 []string `yaml:"another_level3"`
+        } `yaml:"level3"`
+      } `yaml:"level2"`
+      ScalarAtDepth string `yaml:"scalar_at_depth"`
+    } `yaml:"level1"`
+  }
+  type AnchorAliases struct {
+    Base   Base     `yaml:"base"`
+    First  Extended `yaml:"first"`
+    Second Extended `yaml:"second"`
+  }
+  type QuotedStrings struct {
+    SingleQuoted string `yaml:"single_quoted"`
+    DoubleQuoted string `yaml:"double_quoted"`
+    Multiline    string `yaml:"multiline"`
+    Folded       string `yaml:"folded"`
+  }
+
+  type Collections struct {
+    SimpleList  []int                    `yaml:"simple_list"`
+    MixedList   []interface{}            `yaml:"mixed_list"`
+    NestedList  [][]int                  `yaml:"nested_list"`
+    SimpleMap   map[string]int           `yaml:"simple_map"`
+    MixedMap    map[string]interface{}   `yaml:"mixed_map"`
+    ListOfMaps  []map[string]interface{} `yaml:"list_of_maps"`
+  }
+  type ComplexYAML struct {
+    String      string            `yaml:"string"`
+    Integer     int               `yaml:"integer"`
+    Boolean     bool              `yaml:"boolean"`
+    Quoted      QuotedStrings     `yaml:"quoted_strings"`
+    Collections Collections       `yaml:"collections"`
+    Anchors     AnchorAliases     `yaml:"anchors_aliases"`
+    Nested      DeeplyNested      `yaml:"deeply_nested"`
+  }
+
+  
+
+  t.Run("Test Everything", func(t *testing.T) {
+    // Read file
+    var rdoc *yaml.Node
+    var err error
+    rdoc, err = LoadYAMLToNode("testdata/everything.yaml")
+    if err != nil {
+      t.Error(err)
+    }
+    rdoc = rdoc.Content[0].Content[1]
+
+    // Modify data
+
+    var data ComplexYAML
+
+    if err := rdoc.Decode(&data); err != nil {
+      t.Error(err)
+    }
+
+
+    data.String = "MODIFIED STRING"
+    data.Integer = 999
+    data.Boolean = false
+
+    // Modify quoted strings
+    data.Quoted.SingleQuoted = "MODIFIED SINGLE QUOTED"
+    data.Quoted.DoubleQuoted = "MODIFIED DOUBLE QUOTED"
+
+    // Modify collections
+    data.Collections.SimpleList = []int{9, 8, 7, 6}
+    data.Collections.NestedList = [][]int{{10, 20}, {30, 40}}
+    data.Collections.SimpleMap["x"] = 100
+    data.Collections.ListOfMaps[0]["name"] = "MODIFIED ALICE"
+    data.Collections.ListOfMaps[0]["age"] = 99
+
+    // Modify anchors and aliases
+    data.Anchors.Base.Name = "MODIFIED BASE"
+    data.Anchors.First.Extra = "MODIFIED FIRST"
+    data.Anchors.Second.Override = 999
+
+    // Modify nested structure
+    data.Nested.Level1.Level2.Level3.Level4.Value = "MODIFIED DEEP VALUE"
+    data.Nested.Level1.Level2.Level3.AnotherLevel3 = append(
+      data.Nested.Level1.Level2.Level3.AnotherLevel3, 
+      "new_item",
+    )
+
+
+    h := YAMLHandler{ in: rdoc }
+    h.Update(&data)
+
+    b, err := yaml.Marshal(rdoc)
+    if err != nil {
+      t.Error(err)
+    }
+
+    os.WriteFile("TEST.yaml", b, 0644)
+    actual, err := os.ReadFile("testdata/expect_everything.yaml")
+    assert.Equal(t, string(b), string(actual))
+  })
+}
+
 func scalarNode(v string) *yaml.Node {
   return &yaml.Node {
     Kind: yaml.ScalarNode,
@@ -408,4 +529,19 @@ func mapValues(it yit.Iterator) []any {
   }
 
   return result
+}
+
+func LoadYAMLToNode(filePath string) (*yaml.Node, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var node yaml.Node
+	err = yaml.Unmarshal(data, &node)
+	if err != nil {
+		return nil, err
+	}
+
+	return &node, nil
 }

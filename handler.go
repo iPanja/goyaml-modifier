@@ -98,6 +98,8 @@ func (h *YAMLHandler) Update(v any) error {
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
+
+  // TODO: can probably remove this
 	if val.Kind() != reflect.Struct {
 		return fmt.Errorf("Expected a struct, got %v", val.Kind())
 	}
@@ -114,10 +116,10 @@ func (h *YAMLHandler) update(val reflect.Value, out *yaml.Node, shouldAdd bool) 
     return
   }
 
-  if !val.IsValid() {
-    println("NOT VALID!!! (idk)")
-    return
-  }
+  // if !val.IsValid() {
+  //   println("NOT VALID!!! (idk)")
+  //   return
+  // }
 
   switch val.Kind() {
   case reflect.Struct:
@@ -189,15 +191,16 @@ func (h *YAMLHandler) uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool)
         mk := iter.Key()
         mv := iter.Value()
 
-        if IsOmitEmptyStructField(field) && mv.IsZero() {
+        if ShouldSkipField(mv) || (IsOmitEmptyStructField(field) && mv.IsZero()) {
           continue
         }
+
 
         lookup[mk.String()] = mv
       }
     } else {
       // Normal struct field
-      if IsOmitEmptyStructField(field) && v.IsZero() {
+      if ShouldSkipField(v) || (IsOmitEmptyStructField(field) && v.IsZero()) {
         continue
       }
       lookup[getStructFieldKey(field)] = v
@@ -231,7 +234,7 @@ func (h *YAMLHandler) createRemainingNodes(lookup map[string]reflect.Value) []*y
     }
 
     h.update(v, nv, true)
-    // we could delete, but there isn't much point unless we return the lookup map or something
+    // we could delete, but there isn't much point
     nc = append(nc, nk, nv)
   }
 
@@ -261,6 +264,7 @@ func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, out *yaml.No
         continue
       }
 
+      // TODO: - resolve alias in update() for consistency
       h.update(fieldValue, resolveAlias(value), shouldAdd)
       delete(lookup, keyNode.Value)
       c = append(c, keyNode, value)
@@ -335,40 +339,3 @@ func uBool(val reflect.Value, out *yaml.Node) {
   out.Value = fmt.Sprintf("%t", val.Bool())
 }
 
-// trimContents will remove entries from node.Content if they are a nil pointer
-// NOTE: To be depreciated with the implementation of trimNilNodes()
-func trimContents(val reflect.Value, out *yaml.Node) {
-  c := []*yaml.Node{}
-  for i, n := range out.Content {
-    e := val.Index(i)
-
-    if !ShouldSkipField(e) {
-      c = append(c, n)
-    }
-  }
-
-  // Only modify if we need to
-  if len(c) != len(out.Content) {
-    out.Content = c
-  }
-}
-
-// trimNilNodes will recursively iterate through the node and remove those marked for removal (tag == "!!remove")
-//
-//  - scalar: nil (scalar)
-//  - key: nil (map)
-//  - nil (slice)
-func trimNilNodes(node *yaml.Node) {
-  // TODO: IMPLEMENT & CALL
-  result := []*yaml.Node{}
-  
-  for _, n := range node.Content {
-    if n.Tag != "!!remove" {
-      result = append(result, n)
-    }
-  }
-
-  if len(result) != len(node.Content) {
-    node.Content = result
-  }
-}

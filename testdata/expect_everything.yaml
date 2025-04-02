@@ -1,0 +1,77 @@
+# Complex YAML Test File (Simplified)
+# Contains multiple YAML features for parser testing (no special chars/unicode)
+
+# Document separator
+# Basic scalars
+string: "MODIFIED STRING"
+integer: 999
+boolean: false
+# Quoted strings
+quoted_strings:
+    single_quoted: 'MODIFIED SINGLE QUOTED'
+    double_quoted: "MODIFIED DOUBLE QUOTED"
+    multiline: |
+        This is a multiline string
+        that preserves newlines
+    folded: >
+        This is a folded string where
+        newlines become spaces unless
+        they're empty lines or more
+        indented.
+
+# Collections
+collections:
+    simple_list: [9, 8, 7, 6]
+    mixed_list: [1, "two", 3, true]
+    nested_list:
+        - [10, 20]
+        - [30, 40]
+        - 
+            - 5
+            - 6
+    simple_map: {a: 1, b: 2, x: 100}
+    mixed_map: {a: 1, b: "two", c: 3}
+    list_of_maps:
+        - {name: "MODIFIED ALICE", age: 99}
+        - {name: "Bob", age: 25}
+# Anchors and aliases
+anchors_aliases:
+    base: &base
+        name: "MODIFIED BASE"
+        value: 100
+    first:
+        <<: *base
+        extra: "MODIFIED FIRST"
+    second:
+        <<: *base
+        extra: "Second extension"
+        override: 999
+# Complex nesting
+deeply_nested:
+    level1:
+        level2:
+            level3:
+                level4:
+                    value: "MODIFIED DEEP VALUE"
+                list: [1, 2, 3]
+            another_level3:
+                - item1
+                - item2
+                - new_item
+        scalar_at_depth: "value"
+# Multi-document test
+# Second document
+document_two:
+    description: "This is a separate YAML document"
+    items:
+        - first
+        - second
+        - third
+# Third document with different structure
+document_three:
+    - this
+    - is
+    - a
+    - list
+    - document:
+          with: "nested structure"

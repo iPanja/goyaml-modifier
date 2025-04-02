@@ -1,0 +1,82 @@
+data:
+  # Complex YAML Test File (Simplified)
+  # Contains multiple YAML features for parser testing (no special chars/unicode)
+
+  # Document separator
+  # Basic scalars
+  string: "Hello World"
+  integer: 42
+  boolean: true
+
+  # Quoted strings
+  quoted_strings:
+    single_quoted: 'Single quoted string'
+    double_quoted: "Double quoted string"
+    multiline: |
+      This is a multiline string
+      that preserves newlines
+    folded: >
+      This is a folded string where
+      newlines become spaces unless
+      they're empty lines or more
+      indented.
+
+  # Collections
+  collections:
+    simple_list: [1, 2, 3, 4]
+    mixed_list: [1, "two", 3, true, null]
+    nested_list:
+      - [1, 2]
+      - [3, 4]
+      - 
+        - 5
+        - 6
+    simple_map: {a: 1, b: 2}
+    mixed_map: {a: 1, b: "two", c: 3}
+    list_of_maps:
+      - {name: "Alice", age: 30}
+      - {name: "Bob", age: 25}
+
+  # Anchors and aliases
+  anchors_aliases:
+    base: &base
+      name: "Base"
+      value: 100
+    first:
+      <<: *base
+      extra: "First extension"
+    second:
+      <<: *base
+      extra: "Second extension"
+      override: 200
+
+  # Complex nesting
+  deeply_nested:
+    level1:
+      level2:
+        level3:
+          level4:
+            value: "Very deep"
+          list: [1, 2, 3]
+        another_level3:
+          - item1
+          - item2
+      scalar_at_depth: "value"
+
+  # Multi-document test
+  # Second document
+  document_two:
+    description: "This is a separate YAML document"
+    items:
+      - first
+      - second
+      - third
+
+  # Third document with different structure
+  document_three:
+    - this
+    - is
+    - a
+    - list
+    - document:
+        with: "nested structure"
