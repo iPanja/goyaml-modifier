@@ -23,6 +23,8 @@ collections:
     nested_list:
         - [10, 20]
         - [30, 40]
+        - - 5
+          - 6
     simple_map: {a: 1, b: 2, x: 100}
     mixed_map: {a: 1, b: "two", c: 3}
     list_of_maps:
@@ -34,18 +36,12 @@ anchors_aliases:
         name: "Base"
         value: 100
     first:
-        !!merge <<: *base
+        <<: *base
         extra: "MODIFIED FIRST"
-        '':
-            value: 100
-            name: Base
     second:
-        !!merge <<: *base
+        <<: *base
         extra: "Second extension"
         override: 999
-        '':
-            value: 100
-            name: Base
 # Complex nesting
 deeply_nested:
     level1:
@@ -55,10 +51,9 @@ deeply_nested:
                     value: "MODIFIED DEEP VALUE"
                 list: [1, 2, 3]
                 another_level3:
+                    - item1
+                    - item2
                     - new_item
-            another_level3:
-                - item1
-                - item2
         scalar_at_depth: "value"
 # Multi-document test
 # Second document

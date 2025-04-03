@@ -58,9 +58,9 @@ data:
           level4:
             value: "Very deep"
           list: [1, 2, 3]
-        another_level3:
-          - item1
-          - item2
+          another_level3:
+            - item1
+            - item2
       scalar_at_depth: "value"
 
   # Multi-document test

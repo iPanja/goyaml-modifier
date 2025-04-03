@@ -476,13 +476,14 @@ func TestEverything(t *testing.T) {
 
     // Modify collections
     data.Collections.SimpleList = []int{9, 8, 7, 6}
-    data.Collections.NestedList = [][]int{{10, 20}, {30, 40}}
+    data.Collections.NestedList = [][]int{{10, 20}, {30, 40}, {5, 6}}
     data.Collections.SimpleMap["x"] = 100
     data.Collections.ListOfMaps[0]["name"] = "MODIFIED ALICE"
     data.Collections.ListOfMaps[0]["age"] = 99
 
     // Modify anchors and aliases
     data.Anchors.Base.Name = "MODIFIED BASE"
+    data.Anchors.First.Name = "MODIFIED FROM FIRST" // TODO: LOOK INTO THIS BEHAVIOR
     data.Anchors.First.Extra = "MODIFIED FIRST"
     data.Anchors.Second.Override = 999
 
@@ -504,7 +505,7 @@ func TestEverything(t *testing.T) {
 
     os.WriteFile("TEST.yaml", b, 0644)
     actual, err := os.ReadFile("testdata/expect_everything.yaml")
-    assert.Equal(t, string(b), string(actual))
+    assert.Equal(t, string(actual), string(b))
   })
 }
 

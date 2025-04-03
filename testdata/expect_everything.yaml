@@ -14,10 +14,7 @@ quoted_strings:
         This is a multiline string
         that preserves newlines
     folded: >
-        This is a folded string where
-        newlines become spaces unless
-        they're empty lines or more
-        indented.
+        This is a folded string where newlines become spaces unless they're empty lines or more indented.
 
 # Collections
 collections:
@@ -26,9 +23,8 @@ collections:
     nested_list:
         - [10, 20]
         - [30, 40]
-        - 
-            - 5
-            - 6
+        - - 5
+          - 6
     simple_map: {a: 1, b: 2, x: 100}
     mixed_map: {a: 1, b: "two", c: 3}
     list_of_maps:
@@ -54,10 +50,10 @@ deeply_nested:
                 level4:
                     value: "MODIFIED DEEP VALUE"
                 list: [1, 2, 3]
-            another_level3:
-                - item1
-                - item2
-                - new_item
+                another_level3:
+                    - item1
+                    - item2
+                    - new_item
         scalar_at_depth: "value"
 # Multi-document test
 # Second document
@@ -74,4 +70,4 @@ document_three:
     - a
     - list
     - document:
-          with: "nested structure"
+        with: "nested structure"

@@ -116,10 +116,9 @@ func (h *YAMLHandler) update(val reflect.Value, out *yaml.Node, shouldAdd bool) 
     return
   }
 
-  // if !val.IsValid() {
-  //   println("NOT VALID!!! (idk)")
-  //   return
-  // }
+  if out.Kind == yaml.AliasNode {
+    h.update(val, out.Alias, shouldAdd)
+  }
 
   switch val.Kind() {
   case reflect.Struct:
@@ -151,21 +150,9 @@ func (h *YAMLHandler) update(val reflect.Value, out *yaml.Node, shouldAdd bool) 
 func (h *YAMLHandler) uMap(val reflect.Value, out *yaml.Node, shouldAdd bool) {
   // Build Lookup Table on struct
   // Map Key -> Value (reflect)
-  // TODO: is there a magic one-liner for this?
   lookup := make(map[string]reflect.Value, 0)
+  buildMappingLookup(val, lookup)
  
-  iter := val.MapRange()
-  for iter.Next() {
-    mk := iter.Key()
-    mv := iter.Value()
-
-    if ShouldSkipField(mv) && mv.IsZero() { // Ideally you would just remove it from the map altogether...
-      continue
-    }
-
-    lookup[mk.String()] = mv
-  }
-
   h.updateMap(yit.FromNodes(out.Content...), val, out, lookup, shouldAdd, true)
 
   nc := h.createRemainingNodes(lookup)
@@ -174,40 +161,12 @@ func (h *YAMLHandler) uMap(val reflect.Value, out *yaml.Node, shouldAdd bool) {
 
 // Explicit: false => Existing nodes that were not in the struct will be left untouched (they will persist)
 func (h *YAMLHandler) uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool) {
-  t := val.Type()
-
   // Build Lookup Table on struct
   // YAML Tag ( or Struct Field Name) -> Struct Field's Value
   lookup := make(map[string]reflect.Value, 0) // TODO: determine len for efficiency's sake
+  buildMappingLookup(val, lookup)
 
-  fields := reflect.VisibleFields(t)
-  for _, field := range fields{
-    v := val.FieldByName(field.Name)
-    if tags, ok := field.Tag.Lookup("yaml"); ok && strings.Contains(tags, ",inline") && v.Kind() == reflect.Map {
-      // inline (map?)
-      // TODO: can an inline field be anything other than a map
-      iter := v.MapRange() // ISSUE: Do a type check first
-      for iter.Next() {
-        mk := iter.Key()
-        mv := iter.Value()
-
-        if ShouldSkipField(mv) || (IsOmitEmptyStructField(field) && mv.IsZero()) {
-          continue
-        }
-
-
-        lookup[mk.String()] = mv
-      }
-    } else {
-      // Normal struct field
-      if ShouldSkipField(v) || (IsOmitEmptyStructField(field) && v.IsZero()) {
-        continue
-      }
-      lookup[getStructFieldKey(field)] = v
-    } 
-	}
-
-  // Update nodes that are found in the struct
+  // Update nodes using lookup table
   it := yit.FromNodes(out.Content...)
   h.updateMap(it, val, out, lookup, shouldAdd, false)
 
@@ -219,6 +178,8 @@ func (h *YAMLHandler) uStruct(val reflect.Value, out *yaml.Node, shouldAdd bool)
   nc := h.createRemainingNodes(lookup)
   out.Content = append(out.Content, nc...)
 }
+
+
 
 func (h *YAMLHandler) createRemainingNodes(lookup map[string]reflect.Value) []*yaml.Node {
   nc := make([]*yaml.Node, 0)
@@ -257,15 +218,18 @@ func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, out *yaml.No
     if IsMergeKey(keyNode) {
       // Store for later, explicit keys take priority
       mvs = append(mvs, value)
+      c = append(c, keyNode, value)
+      keyNode.Tag = "" // Remove !!merge in the output
+      continue
     }
 
     if fieldValue, ok := lookup[keyNode.Value]; ok {
       if ShouldSkipField(fieldValue) {
+        println("skipping ", keyNode.Value)
         continue
       }
 
-      // TODO: - resolve alias in update() for consistency
-      h.update(fieldValue, resolveAlias(value), shouldAdd)
+      h.update(fieldValue, value, shouldAdd)
       delete(lookup, keyNode.Value)
       c = append(c, keyNode, value)
     } else if !explicit {
