@@ -176,6 +176,14 @@ func TestHandleNode(t *testing.T) {
 		},
 		Anchor: "anchor1",
 	}
+	o2 := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			scalarNode("key3"),
+			scalarNode("value3"),
+		},
+		Anchor: "anchor2",
+	}
 
 	var tests = []struct {
 		name    string
@@ -183,7 +191,7 @@ func TestHandleNode(t *testing.T) {
 		isValid func(t *testing.T, trh *TRHandler)
 	}{
 		{
-			name: "Valid Mapping Node",
+			name: "Test normal order",
 			nodes: []*yaml.Node{
 				o,
 				{
@@ -208,6 +216,68 @@ func TestHandleNode(t *testing.T) {
 				assert.Equal(t, o, tr.out, "Should have the same output node")
 			},
 		},
+		{
+			name: "Test without explicitly iterating over the output node",
+			nodes: []*yaml.Node{
+				{
+					Kind: yaml.MappingNode,
+					Content: []*yaml.Node{
+						scalarNode("<<"),
+						aliasNode(o, "anchor1"),
+					},
+				},
+				{
+					Kind: yaml.MappingNode,
+					Content: []*yaml.Node{
+						scalarNode("<<"),
+						aliasNode(o, "anchor1"),
+					},
+				},
+			},
+			isValid: func(t *testing.T, trh *TRHandler) {
+				assert.Len(t, trh.requests, 1, "Should have 1 request")
+				tr := trh.requests[o]
+				assert.Len(t, tr.ins, 2, "Should have 2 sources")
+				assert.Equal(t, o, tr.out, "Should have the same output node")
+			},
+		},
+		{
+			name: "Test with multiple output nodes",
+			nodes: []*yaml.Node{
+				{
+					Kind: yaml.MappingNode,
+					Content: []*yaml.Node{
+						scalarNode("<<"),
+						aliasNode(o, "anchor1"),
+					},
+				},
+				{
+					Kind: yaml.MappingNode,
+					Content: []*yaml.Node{
+						scalarNode("<<"),
+						aliasNode(o, "anchor1"),
+					},
+				},
+				{
+					Kind: yaml.MappingNode,
+					Content: []*yaml.Node{
+						scalarNode("<<"),
+						aliasNode(o2, "anchor2"),
+					},
+				},
+			},
+			isValid: func(t *testing.T, trh *TRHandler) {
+				assert.Len(t, trh.requests, 2, "Should have 2 request")
+
+				tr1 := trh.requests[o]
+				assert.Len(t, tr1.ins, 2, "Should have 2 sources")
+				assert.Equal(t, o, tr1.out, "Should have the same output node")
+
+				tr2 := trh.requests[o2]
+				assert.Len(t, tr2.ins, 1, "Should have 1 source")
+				assert.Equal(t, o2, tr2.out, "Should have the same output node")
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -222,6 +292,136 @@ func TestHandleNode(t *testing.T) {
 
 			tt.isValid(t, &trh)
 		})
+	}
+}
+
+func TestHandlerSorting(t *testing.T) {
+	o2 := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			scalarNode("key1"),
+			scalarNode("value1"),
+			scalarNode("key2"),
+			scalarNode("value2"),
+		},
+		Anchor:      "anchor2",
+		LineComment: "o2",
+	}
+	o1 := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			scalarNode("key3"),
+			scalarNode("value3"),
+			scalarNode("<<"),
+			aliasNode(o2, "anchor2"),
+		},
+		Anchor:      "anchor1",
+		LineComment: "o1",
+	}
+	o3 := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			scalarNode("<<"),
+			aliasNode(o1, "anchor1"),
+			scalarNode("key4"),
+			scalarNode("value4"),
+		},
+		Anchor:      "anchor3",
+		LineComment: "o3",
+	}
+
+	A := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			scalarNode("<<"),
+			aliasNode(o1, "anchor1"),
+		},
+		LineComment: "A",
+	}
+	B := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			scalarNode("<<"),
+			aliasNode(o1, "anchor1"),
+		},
+		LineComment: "B",
+	}
+	C := &yaml.Node{
+		Kind: yaml.MappingNode,
+		Content: []*yaml.Node{
+			scalarNode("<<"),
+			aliasNode(o2, "anchor2"),
+		},
+		LineComment: "C",
+	}
+
+	var tests = []struct {
+		nodes     []*yaml.Node
+		isFocused bool
+	}{
+		{
+			nodes: []*yaml.Node{o1, o2, C, A, B, o3},
+		},
+		{
+			nodes: []*yaml.Node{o1, C, o2, A, B, o3},
+		},
+		{
+			nodes: []*yaml.Node{o1, A, o2, C, B, o3},
+		},
+		{
+			nodes: []*yaml.Node{o1, A, B, o2, C, o3},
+		},
+		{
+			nodes: []*yaml.Node{o1, A, B, o3, o2, C},
+		},
+		{
+			nodes: []*yaml.Node{o1, A, B, C, o2, o3},
+		},
+		{
+			nodes: []*yaml.Node{o1, A, C, o2, B, o3},
+		},
+		{
+			nodes: []*yaml.Node{o2, o3, o1, A, B, C},
+		},
+		{
+			nodes: []*yaml.Node{o2, o1, A, B, C, o3},
+		},
+	}
+
+	areAnyFocused := false
+	for _, tt := range tests {
+		if tt.isFocused {
+			areAnyFocused = true
+		}
+	}
+
+	for _, tt := range tests {
+		if areAnyFocused && !tt.isFocused {
+			continue
+		}
+
+		trh := TRHandler{
+			requests: make(map[*yaml.Node]*TransferRequest),
+		}
+		for _, node := range tt.nodes {
+			trh.HandleNode(node)
+		}
+
+		order := make([]*yaml.Node, 0)
+		visited := make(map[*yaml.Node]bool, 0)
+		for _, req := range trh.requests {
+			trh.topologicalDfs(req, visited, &order)
+		}
+
+		// Compare order
+		expected := []*yaml.Node{
+			o3,
+			o1,
+			o2,
+		}
+
+		assert.Len(t, order, len(expected), "Should have the same number of nodes")
+		assert.Equal(t, expected, order, "Should have the same order")
 	}
 }
 
@@ -245,6 +445,16 @@ func toArray(m *yaml.Node) []string {
 
 	for i := 0; i < len(m.Content); i += 1 {
 		arr = append(arr, m.Content[i].Value)
+	}
+
+	return arr
+}
+
+func toArrayMultiple(m []*yaml.Node) []string {
+	arr := make([]string, 0, len(m))
+
+	for i := 0; i < len(m); i += 1 {
+		arr = append(arr, m[i].Value, m[i].Anchor)
 	}
 
 	return arr

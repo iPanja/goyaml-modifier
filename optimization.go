@@ -1,10 +1,17 @@
 package modifier
 
-import "gopkg.in/yaml.v3"
+import (
+	"gopkg.in/yaml.v3"
+)
 
 type TRHandler struct {
 	// Perhaps create a dependency graph to run through these in the correct order
 	requests map[*yaml.Node]*TransferRequest
+
+	// This field will override the default of each transfer request
+	onlyUpdate bool
+	// This field will override the default of each transfer request
+	filter func(k *yaml.Node, v *yaml.Node) bool
 }
 
 // m: MappingNode
@@ -32,12 +39,57 @@ func (h *TRHandler) HandleNode(m *yaml.Node) {
 				h.requests[a.Alias] = req
 			} else {
 				// The underlying alisas needs to have a handler created
-				r := MakeStandardTransferRequest(m)
+				// a.Alias is the output node
+				// m is the input node
+				r := MakeStandardTransferRequest(a.Alias)
+				r.ins = append(r.ins, m)
 				h.requests[a.Alias] = &r
-				h.requests[a.Alias].ins = append(h.requests[a.Alias].ins, m)
 			}
 		}
 	}
+}
+
+// topologicalSort will sort the nodes in a topological order
+//
+// There are no cycles in YAML, so we don't need to worry about that
+func (h *TRHandler) topologicalDfs(request *TransferRequest, visited map[*yaml.Node]bool, order *[]*yaml.Node) {
+	if visited[request.out] {
+		return
+	}
+	visited[request.out] = true
+
+	// Process dependencies (request.ins)
+	for _, in := range request.ins {
+		if req, ok := h.requests[in]; ok {
+			h.topologicalDfs(req, visited, order)
+		}
+	}
+
+	*order = append(*order, request.out)
+}
+
+func (h *TRHandler) TransferAll() error {
+	order := make([]*yaml.Node, 0)
+	visited := make(map[*yaml.Node]bool, 0)
+	for _, req := range h.requests {
+		h.topologicalDfs(req, visited, &order)
+	}
+
+	// Reverse the order
+	for i, j := 0, len(order)-1; i < j; i, j = i+1, j-1 {
+		order[i], order[j] = order[j], order[i]
+	}
+
+	// Transfer in the correct order
+	for _, k := range order {
+		if req, ok := h.requests[k]; ok {
+			req.onlyUpdate = h.onlyUpdate
+			req.filter = h.filter
+			req.Transfer()
+		}
+	}
+
+	return nil
 }
 
 type TransferRequest struct {
