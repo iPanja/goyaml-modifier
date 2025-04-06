@@ -27,17 +27,17 @@ func getLookupValue(node *yaml.Node) string {
 }
 
 func getStructFieldKey(field reflect.StructField) string {
-  k := field.Name
-  k = strings.ToLower(k) // TODO: is this ok?
+	k := field.Name
+	k = strings.ToLower(k) // TODO: is this ok?
 
-  tag := field.Tag.Get("yaml");
-  if tag != "" {
-    if tags := strings.Split(tag, ","); len(tags) > 0 {
-      k = tags[0]
-    }
-  }
+	tag := field.Tag.Get("yaml")
+	if tag != "" {
+		if tags := strings.Split(tag, ","); len(tags) > 0 {
+			k = tags[0]
+		}
+	}
 
-  return k
+	return k
 }
 
 func resolveAlias(node *yaml.Node) *yaml.Node {
@@ -53,24 +53,24 @@ func resolveAlias(node *yaml.Node) *yaml.Node {
 }
 
 func IsMergeKey(node *yaml.Node) bool {
-  return node.Value == "<<" || node.Tag == "!!merge"
+	return node.Value == "<<" || node.Tag == "!!merge"
 }
 
 func IsInlineStructField(sf reflect.StructField) bool {
-    tags, ok := sf.Tag.Lookup("yaml") 
-    return ok && strings.Contains(tags, ",inline")
+	tags, ok := sf.Tag.Lookup("yaml")
+	return ok && strings.Contains(tags, ",inline")
 }
 func IsOmitEmptyStructField(sf reflect.StructField) bool {
-    tags, ok := sf.Tag.Lookup("yaml") 
-    return ok && strings.Contains(tags, ",omitempty")
+	tags, ok := sf.Tag.Lookup("yaml")
+	return ok && strings.Contains(tags, ",omitempty")
 }
 func ShouldSkipField(v reflect.Value) bool {
-  switch v.Kind() {
-  case reflect.Slice, reflect.Array, reflect.Interface:
-    return v.IsNil()
-  }
+	switch v.Kind() {
+	case reflect.Slice, reflect.Array, reflect.Interface:
+		return v.IsNil()
+	}
 
-  return false
+	return false
 }
 
 func TransferAllComments(in *yaml.Node, out *yaml.Node) {
@@ -89,8 +89,8 @@ func TransferAllComments(in *yaml.Node, out *yaml.Node) {
 	if in.Kind == yaml.AliasNode {
 		transferComments(in.Alias, out.Alias)
 	} else if in.Kind == yaml.DocumentNode {
-    return // Maybe I should still transfer all comments?
-  }
+		return // Maybe I should still transfer all comments?
+	}
 
 	inc := 1
 	if in.Kind == yaml.MappingNode {
@@ -127,14 +127,46 @@ func TransferAllComments(in *yaml.Node, out *yaml.Node) {
 }
 
 func determineNodeKind(v reflect.Value) yaml.Kind {
-  switch v.Kind() {
-  case reflect.Interface, reflect.Ptr:
-    return determineNodeKind(v.Elem())
-  case reflect.Slice, reflect.Array:
-    return yaml.SequenceNode
-  case reflect.Map, reflect.Struct:
-    return yaml.MappingNode
-  default:
-    return yaml.ScalarNode
-  }
+	switch v.Kind() {
+	case reflect.Interface, reflect.Ptr:
+		return determineNodeKind(v.Elem())
+	case reflect.Slice, reflect.Array:
+		return yaml.SequenceNode
+	case reflect.Map, reflect.Struct:
+		return yaml.MappingNode
+	default:
+		return yaml.ScalarNode
+	}
+}
+
+func buildLookup(mappingNode *yaml.Node) map[string]*yaml.Node {
+	lookup := make(map[string]*yaml.Node, len(mappingNode.Content)/2)
+
+	for i := 0; i < len(mappingNode.Content); i += 2 {
+		key := mappingNode.Content[i]
+		value := mappingNode.Content[i+1]
+
+		lookup[key.Value] = value
+	}
+
+	return lookup
+}
+
+func getMapValue(mappingNode *yaml.Node, keyValue string) *yaml.Node {
+	for i := 0; i < len(mappingNode.Content); i += 2 {
+		if mappingNode.Content[i].Value == keyValue {
+			return mappingNode.Content[i+1]
+		}
+	}
+
+	return nil
+}
+
+func removeKeyValuePair(mappingNode *yaml.Node, keyValue string) {
+	for i := 0; i < len(mappingNode.Content); i += 2 {
+		if mappingNode.Content[i].Value == keyValue {
+			mappingNode.Content = append(mappingNode.Content[:i], mappingNode.Content[i+2:]...)
+			return
+		}
+	}
 }

@@ -17,18 +17,18 @@ type YAMLHandler struct {
 	// For sequences, only one would be set
 	// ytags: `yaml:"..."`
 	// htags: `yamlhandler:"..."`
-	NodeIterators []func(key *yaml.Node, value *yaml.Node, ytags []string, htags []string) error
+	NodeIterators []func(node *yaml.Node) error
 }
 
 func NewYAMLHandler(node *yaml.Node) *YAMLHandler {
 	return &YAMLHandler{
 		in:            node,
-		NodeIterators: make([]func(key *yaml.Node, value *yaml.Node, ytags []string, htags []string) error, 0),
+		NodeIterators: make([]func(node *yaml.Node) error, 0),
 	}
 }
 
 // AddNodeIterator stores a function that will be called on every node the handler either updates or adds inside of the Update() method
-func (h *YAMLHandler) AddNodeIterator(iter func(key *yaml.Node, value *yaml.Node, ytags []string, htags []string) error) *YAMLHandler {
+func (h *YAMLHandler) AddNodeIterator(iter func(node *yaml.Node) error) *YAMLHandler {
 	h.NodeIterators = append(h.NodeIterators, iter)
 	return h
 }
@@ -44,6 +44,14 @@ func ImportAndDecode(node *yaml.Node, v any) (*YAMLHandler, error) {
 	}
 
 	return &h, nil
+}
+
+func (h *YAMLHandler) applyIterators(node *yaml.Node) {
+	for _, iter := range h.NodeIterators {
+		if err := iter(node); err != nil {
+			panic(err)
+		}
+	}
 }
 
 // Update will update the originally imported yaml.Node with the new modifications from the struct
@@ -63,7 +71,7 @@ func (h *YAMLHandler) Update(v any) error {
 
 	// TODO: can probably remove this
 	if val.Kind() != reflect.Struct {
-		return fmt.Errorf("Expected a struct, got %v", val.Kind())
+		return fmt.Errorf("expected a struct, got %v", val.Kind())
 	}
 
 	h.update(val, h.in)
@@ -81,6 +89,8 @@ func (h *YAMLHandler) update(val reflect.Value, out *yaml.Node) {
 	if out.Kind == yaml.AliasNode {
 		h.update(val, out.Alias)
 	}
+
+	h.applyIterators(out)
 
 	switch val.Kind() {
 	case reflect.Struct:
