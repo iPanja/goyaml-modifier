@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/dprotaso/go-yit"
 	"gopkg.in/yaml.v3"
 )
 
@@ -26,7 +27,7 @@ func getLookupValue(node *yaml.Node) string {
 	return node.Value
 }
 
-func getStructFieldKey(field reflect.StructField) string {
+var getStructFieldKey = func(field reflect.StructField) string {
 	k := field.Name
 	k = strings.ToLower(k) // TODO: is this ok?
 
@@ -52,19 +53,20 @@ func resolveAlias(node *yaml.Node) *yaml.Node {
 	return node
 }
 
-func IsMergeKey(node *yaml.Node) bool {
+var IsMergeKey = func(node *yaml.Node) bool {
 	return node.Value == "<<" || node.Tag == "!!merge"
 }
 
-func IsInlineStructField(sf reflect.StructField) bool {
+var IsInlineStructField = func(sf reflect.StructField) bool {
 	tags, ok := sf.Tag.Lookup("yaml")
 	return ok && strings.Contains(tags, ",inline")
 }
-func IsOmitEmptyStructField(sf reflect.StructField) bool {
+var IsOmitEmptyStructField = func(sf reflect.StructField) bool {
 	tags, ok := sf.Tag.Lookup("yaml")
 	return ok && strings.Contains(tags, ",omitempty")
 }
-func ShouldSkipField(v reflect.Value) bool {
+
+var ShouldSkipField = func(v reflect.Value) bool {
 	switch v.Kind() {
 	case reflect.Slice, reflect.Array, reflect.Interface:
 		return v.IsNil()
@@ -169,4 +171,27 @@ func removeKeyValuePair(mappingNode *yaml.Node, keyValue string) {
 			return
 		}
 	}
+}
+
+func FromMerge(v *yaml.Node) yit.Iterator {
+	// <<: *alias
+	if v.Kind == yaml.AliasNode {
+		return yit.FromNodes(v.Alias.Content...)
+	}
+
+	// <<: [*alias_one, *alias_two, ...]
+	its := make([]yit.Iterator, len(v.Content))
+	for _, a := range v.Content {
+		its = append(its, yit.FromNodes(a.Alias.Content...))
+	}
+
+	return yit.FromIterators(its...)
+}
+
+func FromMergeJustAliases(v *yaml.Node) yit.Iterator {
+	if v.Kind == yaml.AliasNode {
+		return yit.FromNode(v)
+	}
+
+	return yit.FromNodes(v.Content...)
 }
