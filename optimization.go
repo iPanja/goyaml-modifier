@@ -14,6 +14,7 @@ func (h *TRHandler) HandleNode(m *yaml.Node) {
 	}
 
 	// Create a new transfer request since it has an anchor
+	// This node is the `out`
 	if m.Anchor != "" {
 		if _, ok := h.requests[m]; !ok {
 			r := MakeStandardTransferRequest(m)
@@ -23,11 +24,12 @@ func (h *TRHandler) HandleNode(m *yaml.Node) {
 
 	// Add as a source node if it has a merge key
 	if mergeValue := getMapValue(m, "<<"); mergeValue != nil {
-		it := FromMerge(mergeValue)
+		it := FromMergeJustAliases(mergeValue)
 		for a, ok := it(); ok; a, ok = it() {
 			if req, ok := h.requests[a.Alias]; ok {
 				// The underlying alias already has a request handler
 				req.ins = append(req.ins, m)
+				h.requests[a.Alias] = req
 			} else {
 				// The underlying alisas needs to have a handler created
 				r := MakeStandardTransferRequest(m)
@@ -97,7 +99,7 @@ func (t *TransferRequest) Transfer() {
 
 	// Move successful transfers
 	for k, p := range transfers {
-		if !p.agree || !t.filter(p.key, p.val) {
+		if !p.agree || (t.filter != nil && !t.filter(p.key, p.val)) {
 			continue
 		}
 

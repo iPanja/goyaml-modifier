@@ -174,6 +174,7 @@ func TestHandleNode(t *testing.T) {
 			scalarNode("key2"),
 			scalarNode("value2"),
 		},
+		Anchor: "anchor1",
 	}
 
 	var tests = []struct {
@@ -184,21 +185,12 @@ func TestHandleNode(t *testing.T) {
 		{
 			name: "Valid Mapping Node",
 			nodes: []*yaml.Node{
-				{
-					Kind:    yaml.MappingNode,
-					Content: []*yaml.Node{},
-					Anchor:  "anchor1",
-				},
+				o,
 				{
 					Kind: yaml.MappingNode,
 					Content: []*yaml.Node{
-						{
-							Kind: yaml.MappingNode,
-							Content: []*yaml.Node{
-								scalarNode("<<"),
-								aliasNode(o, "anchor1"),
-							},
-						},
+						scalarNode("<<"),
+						aliasNode(o, "anchor1"),
 					},
 				},
 				{
@@ -210,7 +202,7 @@ func TestHandleNode(t *testing.T) {
 				},
 			},
 			isValid: func(t *testing.T, trh *TRHandler) {
-				assert.Len(t, trh.requests, 1, "Should have 1 requests")
+				assert.Len(t, trh.requests, 1, "Should have 1 request")
 				tr := trh.requests[o]
 				assert.Len(t, tr.ins, 2, "Should have 2 sources")
 				assert.Equal(t, o, tr.out, "Should have the same output node")
