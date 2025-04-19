@@ -433,25 +433,25 @@ func TestOptimizationFileComparisons(t *testing.T) {
 		expectedFile string
 		handler      TRHandler
 	}{
-		// {
-		// 	name:         "Test 1",
-		// 	inputFile:    "testdata/optimization/basic.yaml",
-		// 	expectedFile: "testdata/optimization/basic_expect.yaml",
-		//  handler: TRHandler{
-		// 		requests:   make(map[*yaml.Node]*TransferRequest),
-		//  },
-		// },
-		// {
-		// 	name:         "Test 2",
-		// 	inputFile:    "testdata/optimization/nested.yaml",
-		// 	expectedFile: "testdata/optimization/nested_expect.yaml",
-		// 	handler: TRHandler{
-		// 		requests:   make(map[*yaml.Node]*TransferRequest),
-		// 		onlyUpdate: true,
-		// 	},
-		// },
 		{
-			name:         "Test 3",
+			name:         "Simple test, no safeties enabled",
+			inputFile:    "testdata/optimization/basic.yaml",
+			expectedFile: "testdata/optimization/basic_expect.yaml",
+			handler: TRHandler{
+				requests: make(map[*yaml.Node]*TransferRequest),
+			},
+		},
+		{
+			name:         "Nested test, onlyUpdate",
+			inputFile:    "testdata/optimization/nested.yaml",
+			expectedFile: "testdata/optimization/nested_expect.yaml",
+			handler: TRHandler{
+				requests:   make(map[*yaml.Node]*TransferRequest),
+				onlyUpdate: true,
+			},
+		},
+		{
+			name:         "Nested test, onlyUpdate & protectOutput",
 			inputFile:    "testdata/optimization/complex_protected.yaml",
 			expectedFile: "testdata/optimization/complex_protected_expect.yaml",
 			handler: TRHandler{
