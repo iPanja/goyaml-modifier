@@ -8,10 +8,25 @@ type TRHandler struct {
 	// Perhaps create a dependency graph to run through these in the correct order
 	requests map[*yaml.Node]*TransferRequest
 
-	// This field will override the default of each transfer request
+	// if true, new nodes will not be created within the out node
 	onlyUpdate bool
+
+	// If true, the output node will not be modified.
+	// This is useful if output was directly modified by the user, and so we want to protect the values inside of it from being overwritten
+	protectOutput bool
+
 	// This field will override the default of each transfer request
 	filter func(k *yaml.Node, v *yaml.Node) bool
+}
+
+func (h *TRHandler) HandleRecursively(node *yaml.Node) {
+	if node.Kind == yaml.MappingNode {
+		h.HandleNode(node)
+	}
+
+	for _, child := range node.Content {
+		h.HandleRecursively(child)
+	}
 }
 
 // m: MappingNode
@@ -84,6 +99,7 @@ func (h *TRHandler) TransferAll() error {
 	for _, k := range order {
 		if req, ok := h.requests[k]; ok {
 			req.onlyUpdate = h.onlyUpdate
+			req.protectOutput = h.protectOutput
 			req.filter = h.filter
 			req.Transfer()
 		}
@@ -96,8 +112,13 @@ type TransferRequest struct {
 	ins []*yaml.Node
 	out *yaml.Node
 
+	// if true, new nodes will not be created within the out node
 	onlyUpdate bool
-	filter     func(k *yaml.Node, v *yaml.Node) bool
+
+	// If true, the output node will not be modified.
+	// This is useful if output was directly modified by the user, and so we want to protect the values inside of it from being overwritten
+	protectOutput bool
+	filter        func(k *yaml.Node, v *yaml.Node) bool
 }
 
 func MakeStandardTransferRequest(out *yaml.Node) TransferRequest {
@@ -125,17 +146,41 @@ func (t *TransferRequest) Transfer() {
 	transfers := make(map[string]*pair, 0) // key.Value -> (Key, Value) node
 	outLookup := buildLookup(t.out)        // key.Value -> Value node
 
+	nested := make(map[string]TransferRequest, 0) // key.Value -> handler
+
 	// Populate transfers
 	for _, in := range t.ins {
 		for i := 0; i < len(in.Content); i += 2 {
 			k := in.Content[i]
-			v := in.Content[i+1]
+			v := in.Content[i+1] // TODO: Resolve!
 
 			if IsMergeKey(k) || v.Alias != nil {
 				// TODO: do we want to follow these?
 				continue
 			}
 
+			// Handle nested transfer requests
+			if v.Kind == yaml.MappingNode || v.Kind == yaml.SequenceNode {
+				if tr, ok := nested[k.Value]; ok {
+					// We have already created a transfer request for this node
+					tr.ins = append(tr.ins, v)
+					nested[k.Value] = tr
+				} else {
+					// Create a new transfer request for this node
+					if out, ok := outLookup[k.Value]; ok {
+						tr := MakeStandardTransferRequest(out)
+						tr.ins = append(tr.ins, v)
+						nested[k.Value] = tr
+					} else {
+						// We need to create a new node within the out node
+						// Only do this if t.onlyUpdate == false
+						// TODO:
+					}
+				}
+				continue
+			}
+
+			// Normal scalars
 			if p, ok := transfers[k.Value]; ok {
 				// Only transfer if all sources agree on the value
 				if p.val.Value != v.Value {
@@ -158,6 +203,13 @@ func (t *TransferRequest) Transfer() {
 		// TODO: Filter here?
 		if outNode, ok := outLookup[k]; ok {
 			// We are updating an existing node
+			if t.protectOutput {
+				// For protected nodes, we are not overwriting the value
+				// And we only then cleanup the input nodes if they agere with the output
+				if outNode.Value != p.val.Value {
+					continue
+				}
+			}
 			outNode.Value = p.val.Value
 		} else if !t.onlyUpdate {
 			// Add a new node, IF we are not only updating
@@ -170,6 +222,22 @@ func (t *TransferRequest) Transfer() {
 		// Remove the key from the source nodes
 		for _, in := range t.ins {
 			removeKeyValuePair(in, k)
+		}
+	}
+
+	// Handle nested transfer requests
+	for s, tr := range nested {
+		// Transfer
+		tr.onlyUpdate = t.onlyUpdate
+		tr.protectOutput = t.protectOutput
+		tr.filter = t.filter
+		tr.Transfer()
+
+		// Nested blocks do not have a merge key, so there is a chance we delete all of the content
+		for _, in := range t.ins {
+			if n := getMapValue(in, s); n != nil && len(n.Content) == 0 {
+				removeKeyValuePair(in, s)
+			}
 		}
 	}
 }

@@ -1,0 +1,24 @@
+data:
+    src: &src
+        a: "b"
+        c: "d"
+        f: "f"
+        block:
+          key: "value" # disagree's with input nodes, despite them all agreeing
+          another: "pair"
+          name: "bob" # agree's with all input nodes
+    first:
+        <<: *src
+        a: "agree"
+        c: "disagree"
+        block: 
+          key: "new value"
+          name: "bob" # should get deleted
+    second:
+        <<: *src
+        a: "agree"
+        c: "DISAGREE"
+        block: 
+          key: "new value"
+          something: "else"
+          name: "bob" # should get deleted

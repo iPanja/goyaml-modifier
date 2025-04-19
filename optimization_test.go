@@ -1,6 +1,7 @@
 package modifier
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -422,6 +423,77 @@ func TestHandlerSorting(t *testing.T) {
 
 		assert.Len(t, order, len(expected), "Should have the same number of nodes")
 		assert.Equal(t, expected, order, "Should have the same order")
+	}
+}
+
+func TestOptimizationFileComparisons(t *testing.T) {
+	var tests = []struct {
+		name         string
+		inputFile    string
+		expectedFile string
+		handler      TRHandler
+	}{
+		// {
+		// 	name:         "Test 1",
+		// 	inputFile:    "testdata/optimization/basic.yaml",
+		// 	expectedFile: "testdata/optimization/basic_expect.yaml",
+		//  handler: TRHandler{
+		// 		requests:   make(map[*yaml.Node]*TransferRequest),
+		//  },
+		// },
+		// {
+		// 	name:         "Test 2",
+		// 	inputFile:    "testdata/optimization/nested.yaml",
+		// 	expectedFile: "testdata/optimization/nested_expect.yaml",
+		// 	handler: TRHandler{
+		// 		requests:   make(map[*yaml.Node]*TransferRequest),
+		// 		onlyUpdate: true,
+		// 	},
+		// },
+		{
+			name:         "Test 3",
+			inputFile:    "testdata/optimization/complex_protected.yaml",
+			expectedFile: "testdata/optimization/complex_protected_expect.yaml",
+			handler: TRHandler{
+				requests:      make(map[*yaml.Node]*TransferRequest),
+				onlyUpdate:    true,
+				protectOutput: true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input, err := os.ReadFile(tt.inputFile)
+			if err != nil {
+				t.Fatalf("Failed to read input file: %v", err)
+			}
+
+			b, err := os.ReadFile(tt.expectedFile)
+			expected := string(b)
+			if err != nil {
+				t.Fatalf("Failed to read output file: %v", err)
+			}
+
+			var inNode yaml.Node
+			err = yaml.Unmarshal(input, &inNode)
+			if err != nil {
+				t.Fatalf("Failed to unmarshal input file: %v", err)
+			}
+
+			trh := tt.handler
+			trh.HandleRecursively(&inNode)
+			trh.TransferAll()
+
+			b, err = yaml.Marshal(&inNode)
+			if err != nil {
+				t.Fatalf("Failed to encode output: %v", err)
+			}
+			actual := string(b)
+			os.WriteFile("testdata/optimization/out.yaml", b, 0644)
+
+			assert.Equal(t, expected, actual, "Output node should match expected output")
+		})
 	}
 }
 

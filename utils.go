@@ -9,10 +9,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-/*
-* File for one-off util methods
- */
-
 func transferComments(in *yaml.Node, out *yaml.Node) {
 	out.LineComment = in.LineComment
 	out.HeadComment = in.HeadComment

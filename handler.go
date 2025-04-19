@@ -17,7 +17,8 @@ type YAMLHandler struct {
 	// For sequences, only one would be set
 	// ytags: `yaml:"..."`
 	// htags: `yamlhandler:"..."`
-	NodeIterators []func(node *yaml.Node) error
+	NodeIterators    []func(node *yaml.Node) error
+	overrideExplicit bool // Ensure maps are only updated, and no nodes are removed
 }
 
 func NewYAMLHandler(node *yaml.Node) *YAMLHandler {
@@ -67,11 +68,6 @@ func (h *YAMLHandler) Update(v any) error {
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
-	}
-
-	// TODO: can probably remove this
-	if val.Kind() != reflect.Struct {
-		return fmt.Errorf("expected a struct, got %v", val.Kind())
 	}
 
 	h.update(val, h.in)
@@ -177,12 +173,15 @@ func (h *YAMLHandler) createRemainingNodes(lookup map[string]reflect.Value) []*y
 func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, out *yaml.Node, lookup map[string]reflect.Value, explicit bool) {
 	c := []*yaml.Node{}
 
+	if h.overrideExplicit {
+		explicit = false
+	}
+
 	for keyNode, ok := it(); ok; keyNode, ok = it() {
 		value, _ := it()
 
 		if fieldValue, ok := lookup[keyNode.Value]; ok {
 			if ShouldSkipField(fieldValue) {
-				println("skipping ", keyNode.Value)
 				continue
 			}
 

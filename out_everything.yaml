@@ -4,13 +4,13 @@ data:
 
     # Document separator
     # Basic scalars
-    string: "MODIFIED STRING"
-    integer: 999
-    boolean: false
+    string: "Hello World"
+    integer: 42
+    boolean: true
     # Quoted strings
     quoted_strings:
-        single_quoted: 'MODIFIED SINGLE QUOTED'
-        double_quoted: "MODIFIED DOUBLE QUOTED"
+        single_quoted: 'Single quoted string'
+        double_quoted: "Double quoted string"
         multiline: |
             This is a multiline string
             that preserves newlines
@@ -19,40 +19,39 @@ data:
 
     # Collections
     collections:
-        simple_list: [9, 8, 7, 6]
-        mixed_list: [1, "two", 3, true]
+        simple_list: [1, 2, 3, 4]
+        mixed_list: [1, "two", 3, true, null]
         nested_list:
             - [10, 20]
             - [30, 40]
-        simple_map: {a: 1, b: 2, x: 100}
+        simple_map: {a: 1, b: 2}
         mixed_map: {a: 1, b: "two", c: 3}
         list_of_maps:
-            - {name: "MODIFIED ALICE", age: 99}
+            - {name: "Alice", age: 30}
             - {name: "Bob", age: 25}
     # Anchors and aliases
     anchors_aliases:
         base: &base
-            name: "MODIFIED BASE"
+            name: "Base"
             value: 100
         first:
             <<: *base
-            extra: "MODIFIED FIRST"
+            extra: "First extension"
         second:
             <<: *base
             extra: "Second extension"
-            override: 999
+            override: 200
     # Complex nesting
     deeply_nested:
         level1:
             level2:
                 level3:
                     level4:
-                        value: "MODIFIED DEEP VALUE"
+                        value: "Very deep"
                     list: [1, 2, 3]
                     another_level3:
                         - item1
                         - item2
-                        - new_item
             scalar_at_depth: "value"
     # Multi-document test
     # Second document

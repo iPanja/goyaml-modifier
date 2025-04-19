@@ -1,0 +1,13 @@
+data:
+    src: &src
+        a: "b"
+        c: "d"
+        f: "f"
+    first:
+        <<: *src
+        a: "agree"
+        c: "disagree"
+    second:
+        <<: *src
+        a: "agree"
+        c: "DISAGREE"

@@ -1,0 +1,22 @@
+data:
+    src: &src
+        a: "b"
+        c: "d"
+        f: "f"
+        block:
+            key: "value" # disagree's with input nodes, despite them all agreeing
+            another: "pair"
+            name: "bob" # agree's with all input nodes
+    first:
+        !!merge <<: *src
+        a: "agree"
+        c: "disagree"
+        block:
+            key: "new value"
+    second:
+        !!merge <<: *src
+        a: "agree"
+        c: "DISAGREE"
+        block:
+            key: "new value"
+            something: "else"

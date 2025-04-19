@@ -1,0 +1,16 @@
+data:
+    src: &src
+        a: "agree"
+        c: "d"
+        f: "f"
+        block:
+            key: "new value"
+            another: "pair"
+    first:
+        !!merge <<: *src
+        c: "disagree"
+    second:
+        !!merge <<: *src
+        c: "DISAGREE"
+        block:
+            something: "else"

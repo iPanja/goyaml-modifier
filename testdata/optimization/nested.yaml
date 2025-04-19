@@ -1,0 +1,21 @@
+data:
+    src: &src
+        a: "b"
+        c: "d"
+        f: "f"
+        block:
+          key: "value"
+          another: "pair"
+    first:
+        <<: *src
+        a: "agree"
+        c: "disagree"
+        block: 
+          key: "new value"
+    second:
+        <<: *src
+        a: "agree"
+        c: "DISAGREE"
+        block: 
+          key: "new value"
+          something: "else"

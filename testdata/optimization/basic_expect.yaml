@@ -1,0 +1,11 @@
+data:
+    src: &src
+        a: "agree"
+        c: "d"
+        f: "f"
+    first:
+        !!merge <<: *src
+        c: "disagree"
+    second:
+        !!merge <<: *src
+        c: "DISAGREE"
