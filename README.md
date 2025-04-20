@@ -106,3 +106,5 @@ Usage:
   - `onlyUpdate` - Do not add new nodes to `output`, only refactor nodes that exist within the output node.
   - `protectOutput` - Do not modify the output node or its contents whatsoever. So, only remove duplicate, redundent nodes from inputs
   - `protectNodes` - Do not modify these specific nodes. This is more granular than `protectOutput`(which protects all of `output.Contents`).
+
+The last two options are meant to be used when you directly modify the `output` block. In that scenario, you may not want to accidentally overwrite the value with those from `inputs`. The `YAMLHandler` automatically keeps track of the specific nodes you modify and sets up this protection, via `Optimize()`.
