@@ -77,10 +77,12 @@ func (h *YAMLHandler) Update(v any) error {
 // It uses the nodes the handler has already modified to determine which nodes are safe to remove
 func (h *YAMLHandler) Optimize() {
 	trh := TRHandler{
-		requests:       make(map[*yaml.Node]*TransferRequest),
-		onlyUpdate:     true,
-		protectOutput:  false,
-		protectedNodes: h.modifiedNodes,
+		requests: make(map[*yaml.Node]*TransferRequest),
+		options: HandlerOptions{
+			onlyUpdate:     true,
+			protectOutput:  false,
+			protectedNodes: h.modifiedNodes,
+		},
 	}
 	trh.HandleRecursively(h.in)
 
@@ -182,7 +184,7 @@ func (h *YAMLHandler) createRemainingNodes(lookup map[string]reflect.Value) []*y
 // Explicit (if true): only keep nodes that are present in lookup, all others will be removed
 //
 // Does NOT handle merge keys and aliases
-func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, out *yaml.Node, lookup map[string]reflect.Value, explicit bool) {
+func (h *YAMLHandler) updateMap(it yit.Iterator, _ reflect.Value, out *yaml.Node, lookup map[string]reflect.Value, explicit bool) {
 	c := []*yaml.Node{}
 
 	if h.overrideExplicit {

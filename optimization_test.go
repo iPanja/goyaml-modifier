@@ -266,11 +266,13 @@ func TestTransferRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tr := TransferRequest{
-				ins:            tt.ins,
-				out:            tt.out,
-				onlyUpdate:     tt.onlyUpdate,
-				protectOutput:  tt.protectOutput,
-				protectedNodes: tt.protectedNodes,
+				ins: tt.ins,
+				out: tt.out,
+				options: HandlerOptions{
+					onlyUpdate:     tt.onlyUpdate,
+					protectOutput:  tt.protectOutput,
+					protectedNodes: tt.protectedNodes,
+				},
 			}
 
 			tr.Transfer()
@@ -541,25 +543,22 @@ func TestHandlerSorting(t *testing.T) {
 
 func TestOptimizationFileComparisons(t *testing.T) {
 	var tests = []struct {
-		name         string
-		inputFile    string
-		expectedFile string
-		handler      TRHandler
+		name           string
+		inputFile      string
+		expectedFile   string
+		handlerOptions HandlerOptions
 	}{
 		{
-			name:         "Simple test, no safeties enabled",
-			inputFile:    "testdata/optimization/basic.yaml",
-			expectedFile: "testdata/optimization/basic_expect.yaml",
-			handler: TRHandler{
-				requests: make(map[*yaml.Node]*TransferRequest),
-			},
+			name:           "Simple test, no safeties enabled",
+			inputFile:      "testdata/optimization/basic.yaml",
+			expectedFile:   "testdata/optimization/basic_expect.yaml",
+			handlerOptions: HandlerOptions{},
 		},
 		{
 			name:         "Nested test, onlyUpdate",
 			inputFile:    "testdata/optimization/nested.yaml",
 			expectedFile: "testdata/optimization/nested_expect.yaml",
-			handler: TRHandler{
-				requests:   make(map[*yaml.Node]*TransferRequest),
+			handlerOptions: HandlerOptions{
 				onlyUpdate: true,
 			},
 		},
@@ -567,8 +566,7 @@ func TestOptimizationFileComparisons(t *testing.T) {
 			name:         "Nested test, onlyUpdate & protectOutput",
 			inputFile:    "testdata/optimization/complex_protected.yaml",
 			expectedFile: "testdata/optimization/complex_protected_expect.yaml",
-			handler: TRHandler{
-				requests:      make(map[*yaml.Node]*TransferRequest),
+			handlerOptions: HandlerOptions{
 				onlyUpdate:    true,
 				protectOutput: true,
 			},
@@ -594,7 +592,10 @@ func TestOptimizationFileComparisons(t *testing.T) {
 				t.Fatalf("Failed to unmarshal input file: %v", err)
 			}
 
-			trh := tt.handler
+			trh := TRHandler{
+				requests: make(map[*yaml.Node]*TransferRequest),
+				options:  tt.handlerOptions,
+			}
 			trh.HandleRecursively(&inNode)
 			trh.TransferAll()
 
