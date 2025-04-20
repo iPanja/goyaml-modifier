@@ -1,6 +1,8 @@
 package modifier
 
 import (
+	"slices"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -14,6 +16,9 @@ type TRHandler struct {
 	// If true, the output node will not be modified.
 	// This is useful if output was directly modified by the user, and so we want to protect the values inside of it from being overwritten
 	protectOutput bool
+
+	// More granular than protectOutput
+	protectedNodes []*yaml.Node
 
 	// This field will override the default of each transfer request
 	filter func(k *yaml.Node, v *yaml.Node) bool
@@ -96,10 +101,12 @@ func (h *TRHandler) TransferAll() error {
 	}
 
 	// Transfer in the correct order
+	// Transfer over safety checks
 	for _, k := range order {
 		if req, ok := h.requests[k]; ok {
 			req.onlyUpdate = h.onlyUpdate
 			req.protectOutput = h.protectOutput
+			req.protectedNodes = h.protectedNodes
 			req.filter = h.filter
 			req.Transfer()
 		}
@@ -118,7 +125,11 @@ type TransferRequest struct {
 	// If true, the output node will not be modified.
 	// This is useful if output was directly modified by the user, and so we want to protect the values inside of it from being overwritten
 	protectOutput bool
-	filter        func(k *yaml.Node, v *yaml.Node) bool
+
+	// More granular than protectOutput
+	protectedNodes []*yaml.Node
+
+	filter func(k *yaml.Node, v *yaml.Node) bool
 }
 
 func MakeStandardTransferRequest(out *yaml.Node) TransferRequest {
@@ -203,13 +214,16 @@ func (t *TransferRequest) Transfer() {
 		// TODO: Filter here?
 		if outNode, ok := outLookup[k]; ok {
 			// We are updating an existing node
-			if t.protectOutput {
+			if t.protectOutput || slices.Contains(t.protectedNodes, outNode) {
 				// For protected nodes, we are not overwriting the value
 				// And we only then cleanup the input nodes if they agere with the output
 				if outNode.Value != p.val.Value {
 					continue
 				}
 			}
+
+			// TODO: move comments over as well
+			// Deepcopy?
 			outNode.Value = p.val.Value
 		} else if !t.onlyUpdate {
 			// Add a new node, IF we are not only updating
@@ -230,6 +244,7 @@ func (t *TransferRequest) Transfer() {
 		// Transfer
 		tr.onlyUpdate = t.onlyUpdate
 		tr.protectOutput = t.protectOutput
+		tr.protectedNodes = t.protectedNodes
 		tr.filter = t.filter
 		tr.Transfer()
 

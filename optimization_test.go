@@ -9,12 +9,25 @@ import (
 )
 
 func TestTransferRequest(t *testing.T) {
+	dummyNodes := []*yaml.Node{
+		{
+			Kind:  yaml.ScalarNode,
+			Value: "dummy",
+		},
+		{
+			Kind:  yaml.ScalarNode,
+			Value: "hello",
+		},
+	}
+
 	var tests = []struct {
-		name       string
-		out        *yaml.Node
-		ins        []*yaml.Node
-		onlyUpdate bool
-		isValid    func(t *testing.T, out *yaml.Node, in []*yaml.Node)
+		name           string
+		out            *yaml.Node
+		ins            []*yaml.Node
+		onlyUpdate     bool
+		protectOutput  bool
+		protectedNodes []*yaml.Node
+		isValid        func(t *testing.T, out *yaml.Node, in []*yaml.Node)
 	}{
 		{
 			name: "Valid TransferRequest",
@@ -150,14 +163,114 @@ func TestTransferRequest(t *testing.T) {
 			},
 			onlyUpdate: true,
 		},
+		{
+			name: "Test protected output",
+			out: &yaml.Node{
+				Kind: yaml.MappingNode,
+				Content: []*yaml.Node{
+					scalarNode("key1"),
+					scalarNode("value1"),
+					scalarNode("key2"),
+					scalarNode("value2"),
+				},
+				Anchor: "block",
+			},
+			ins: []*yaml.Node{
+				{
+					Kind: yaml.MappingNode,
+					Content: []*yaml.Node{
+						scalarNode("key1"),
+						scalarNode("new value 1"), // Output is protected, this will not go through because it disagrees on the value
+						scalarNode("key2"),
+						scalarNode("value2"), // Despite the output being protected, this agrees on the value so it can be refactored
+						scalarNode("c"),
+						scalarNode("d"), // Nothing happens, onlyUpdate is true
+					},
+				},
+			},
+			isValid: func(t *testing.T, out *yaml.Node, in []*yaml.Node) {
+				expectedOut := []string{
+					"key1",
+					"value1",
+					"key2",
+					"value2",
+					"c",
+					"d",
+				}
+				expectedIn1 := []string{
+					"key1",
+					"new value 1",
+				}
+
+				assert.ElementsMatch(t, expectedOut, toArray(out), "Output node should be valid")
+				assert.ElementsMatch(t, expectedIn1, toArray(in[0]), "First source should be valid")
+			},
+			protectOutput: true,
+		},
+		{
+			name: "Test protected node",
+			out: &yaml.Node{
+				Kind: yaml.MappingNode,
+				Content: []*yaml.Node{
+					scalarNode("key1"),
+					dummyNodes[0],
+					scalarNode("key2"),
+					scalarNode("value2"),
+					scalarNode("key3"),
+					dummyNodes[1],
+				},
+			},
+			ins: []*yaml.Node{
+				{
+					Kind: yaml.MappingNode,
+					Content: []*yaml.Node{
+						scalarNode("key1"),
+						scalarNode("new value 1"), // dummyNodes[0] is protected, this refactor will not go through because they disagree on the value
+						scalarNode("key2"),
+						scalarNode("new value 2"), // This will go through since the node is not protected
+						scalarNode("c"),
+						scalarNode("d"), // Does not go through since node does not exist in out, and onlyUpdate is true
+						scalarNode("key3"),
+						scalarNode(dummyNodes[1].Value), // dummyNodes[1] is protected, this refactor will go through since it agrees on the value
+					},
+				},
+			},
+			isValid: func(t *testing.T, out *yaml.Node, in []*yaml.Node) {
+				expectedOut := []string{
+					"key1",
+					dummyNodes[0].Value,
+					"key2",
+					"new value 2",
+					"key3",
+					dummyNodes[1].Value,
+				}
+				expectedIn1 := []string{
+					"key1",
+					"new value 1",
+					"c",
+					"d",
+				}
+
+				assert.ElementsMatch(t, expectedOut, toArray(out), "Output node should be valid")
+				assert.ElementsMatch(t, expectedIn1, toArray(in[0]), "First source should be valid")
+			},
+			onlyUpdate:    true,
+			protectOutput: false,
+			protectedNodes: []*yaml.Node{
+				dummyNodes[0],
+				dummyNodes[1],
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tr := TransferRequest{
-				ins:        tt.ins,
-				out:        tt.out,
-				onlyUpdate: tt.onlyUpdate,
+				ins:            tt.ins,
+				out:            tt.out,
+				onlyUpdate:     tt.onlyUpdate,
+				protectOutput:  tt.protectOutput,
+				protectedNodes: tt.protectedNodes,
 			}
 
 			tr.Transfer()

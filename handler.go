@@ -3,6 +3,7 @@ package modifier
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/dprotaso/go-yit"
 	"gopkg.in/yaml.v3"
@@ -14,11 +15,10 @@ import (
 type YAMLHandler struct {
 	in *yaml.Node
 
-	// For sequences, only one would be set
-	// ytags: `yaml:"..."`
-	// htags: `yamlhandler:"..."`
 	NodeIterators    []func(node *yaml.Node) error
 	overrideExplicit bool // Ensure maps are only updated, and no nodes are removed
+
+	modifiedNodes []*yaml.Node // Nodes that were modified, to be used by optimizer.go
 }
 
 func NewYAMLHandler(node *yaml.Node) *YAMLHandler {
@@ -61,10 +61,6 @@ func (h *YAMLHandler) applyIterators(node *yaml.Node) {
 //
 // Exitpoint for YAMLHandler
 func (h *YAMLHandler) Update(v any) error {
-	// h.Update(
-	// transferAllComments(in *yaml.Node, out *yaml.Node) -- Not needed since we have our own decoder
-	//
-
 	val := reflect.ValueOf(v)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
@@ -73,6 +69,20 @@ func (h *YAMLHandler) Update(v any) error {
 	h.update(val, h.in)
 
 	return nil
+}
+
+// Optimize will automatically refactor any nodes it can through merge keys!
+// It uses the nodes the handler has already modified to determine which nodes are safe to remove
+func (h *YAMLHandler) Optimize() {
+	trh := TRHandler{
+		requests:       make(map[*yaml.Node]*TransferRequest),
+		onlyUpdate:     true,
+		protectOutput:  false,
+		protectedNodes: h.modifiedNodes,
+	}
+	trh.HandleRecursively(h.in)
+
+	trh.TransferAll()
 }
 
 // TODO: Build a flattened path to the node, to be passed to the iterator
@@ -94,11 +104,11 @@ func (h *YAMLHandler) update(val reflect.Value, out *yaml.Node) {
 	case reflect.Map:
 		h.uMap(val, out)
 	case reflect.Int:
-		uInt(val, out)
+		h.uInt(val, out)
 	case reflect.String:
-		uString(val, out)
+		h.uString(val, out)
 	case reflect.Bool:
-		uBool(val, out)
+		h.uBool(val, out)
 	case reflect.Interface, reflect.Ptr:
 		h.update(val.Elem(), out)
 	case reflect.Slice, reflect.Array:
@@ -241,14 +251,30 @@ func (h *YAMLHandler) uSequence(val reflect.Value, out *yaml.Node) {
 	out.Content = c
 }
 
-func uInt(val reflect.Value, out *yaml.Node) {
+func (h *YAMLHandler) uInt(val reflect.Value, out *yaml.Node) {
+	if i, err := strconv.ParseInt(out.Value, 10, 64); err == nil && i == val.Int() {
+		return
+	}
+
+	h.modifiedNodes = append(h.modifiedNodes, out)
 	out.Value = fmt.Sprintf("%d", val.Int())
 }
 
-func uString(val reflect.Value, out *yaml.Node) {
-	out.Value = val.String()
+func (h *YAMLHandler) uString(val reflect.Value, out *yaml.Node) {
+	s := val.String()
+	if s == out.Value {
+		return
+	}
+
+	h.modifiedNodes = append(h.modifiedNodes, out)
+	out.Value = s
 }
 
-func uBool(val reflect.Value, out *yaml.Node) {
+func (h *YAMLHandler) uBool(val reflect.Value, out *yaml.Node) {
+	if b, err := strconv.ParseBool(out.Value); err == nil && b == val.Bool() {
+		return
+	}
+
+	h.modifiedNodes = append(h.modifiedNodes, out)
 	out.Value = fmt.Sprintf("%t", val.Bool())
 }
