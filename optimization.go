@@ -6,22 +6,24 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+type HandlerOptions struct {
+	// if true, new nodes will not be created within the out node
+	onlyUpdate bool
+	// If true, the output node will not be modified.
+	// This is useful if output was directly modified by the user, and so we want to protect the values inside of it from being overwritten
+	protectOutput bool
+	// More granular than protectOutput
+	protectedNodes []*yaml.Node
+}
+
 type TRHandler struct {
 	// Perhaps create a dependency graph to run through these in the correct order
 	requests map[*yaml.Node]*TransferRequest
 
-	// if true, new nodes will not be created within the out node
-	onlyUpdate bool
-
-	// If true, the output node will not be modified.
-	// This is useful if output was directly modified by the user, and so we want to protect the values inside of it from being overwritten
-	protectOutput bool
-
-	// More granular than protectOutput
-	protectedNodes []*yaml.Node
+	options HandlerOptions
 
 	// This field will override the default of each transfer request
-	filter func(k *yaml.Node, v *yaml.Node) bool
+	filter func(k *yaml.Node, v *yaml.Node) bool // TODO: move into options?
 }
 
 func (h *TRHandler) HandleRecursively(node *yaml.Node) {
@@ -104,9 +106,7 @@ func (h *TRHandler) TransferAll() error {
 	// Transfer over safety checks
 	for _, k := range order {
 		if req, ok := h.requests[k]; ok {
-			req.onlyUpdate = h.onlyUpdate
-			req.protectOutput = h.protectOutput
-			req.protectedNodes = h.protectedNodes
+			req.options = h.options
 			req.filter = h.filter
 			req.Transfer()
 		}
@@ -119,25 +119,21 @@ type TransferRequest struct {
 	ins []*yaml.Node
 	out *yaml.Node
 
-	// if true, new nodes will not be created within the out node
-	onlyUpdate bool
-
-	// If true, the output node will not be modified.
-	// This is useful if output was directly modified by the user, and so we want to protect the values inside of it from being overwritten
-	protectOutput bool
-
-	// More granular than protectOutput
-	protectedNodes []*yaml.Node
+	options HandlerOptions
 
 	filter func(k *yaml.Node, v *yaml.Node) bool
 }
 
 func MakeStandardTransferRequest(out *yaml.Node) TransferRequest {
 	return TransferRequest{
-		ins:        make([]*yaml.Node, 0),
-		out:        out,
-		onlyUpdate: false,
-		filter:     func(k *yaml.Node, v *yaml.Node) bool { return true },
+		ins: make([]*yaml.Node, 0),
+		out: out,
+		options: HandlerOptions{
+			onlyUpdate:     false,
+			protectOutput:  false,
+			protectedNodes: make([]*yaml.Node, 0),
+		},
+		filter: func(k *yaml.Node, v *yaml.Node) bool { return true },
 	}
 }
 
@@ -214,7 +210,7 @@ func (t *TransferRequest) Transfer() {
 		// TODO: Filter here?
 		if outNode, ok := outLookup[k]; ok {
 			// We are updating an existing node
-			if t.protectOutput || slices.Contains(t.protectedNodes, outNode) {
+			if t.options.protectOutput || slices.Contains(t.options.protectedNodes, outNode) {
 				// For protected nodes, we are not overwriting the value
 				// And we only then cleanup the input nodes if they agere with the output
 				if outNode.Value != p.val.Value {
@@ -225,7 +221,7 @@ func (t *TransferRequest) Transfer() {
 			// TODO: move comments over as well
 			// Deepcopy?
 			outNode.Value = p.val.Value
-		} else if !t.onlyUpdate {
+		} else if !t.options.onlyUpdate {
 			// Add a new node, IF we are not only updating
 			// Deepcopy?
 			t.out.Content = append(t.out.Content, p.key, p.val)
@@ -242,9 +238,7 @@ func (t *TransferRequest) Transfer() {
 	// Handle nested transfer requests
 	for s, tr := range nested {
 		// Transfer
-		tr.onlyUpdate = t.onlyUpdate
-		tr.protectOutput = t.protectOutput
-		tr.protectedNodes = t.protectedNodes
+		tr.options = t.options
 		tr.filter = t.filter
 		tr.Transfer()
 

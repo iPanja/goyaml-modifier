@@ -2,7 +2,7 @@
 
 A minimally invasive YAML modifier.
 
-## Purpsoe
+## Purpose
 
 This tool aims to solve the issue of modifying YAML files while preserving their original structure (as much as possible).
 
@@ -37,6 +37,7 @@ v.Unused["random_new_entry"] = "hello!"
 
 ```go
 h.Update(v)
+h.Optimize()
 ```
 
 ### Here are possible outputs that could be generated based on the input
@@ -81,3 +82,27 @@ data:
   new_random_entry: hello!
 
 ```
+
+## Documentation
+
+### YAMLHandler
+Used to update a `yaml.Node` as an alternative to utilizing `node.Decode()`.  It will update existing nodes in order to preserve the rest of the node that would usually be lost by directly decoding.
+
+It also provides an accessible way to call custom functions on nodes that do get updated:
+`func(node *yaml.Node, path []string) error`.
+
+Additionally, it tracks the nodes that get modified and exposes an easy `Optimize()` method that refactors the contents of a map (and nested structures) via `TRHandler` and `TransferRequest`.
+
+### TRHandler
+Automatically orchestrates multiple TransferRequests under the hood, and abstracts the process of creating them.
+
+Usage:
+ - `HandleRecursively` - Scan a node and all of its children recursively, calling `HandleNode()` on them.
+ - `HandleNode` - Given a map, if it has an anchor then create a transfer request with it as the output node. If the map contains one or more merge keys, create the appropriate requests.
+
+### TransferRequest
+- Attempt to move values from the `input` nodes (mapping or sequence node) to the `output` node only if all the inputs agree on a value
+- HandlerOptions:
+  - `onlyUpdate` - do not add new nodes to `output`, only refactor nodes that exist within the output node.
+  - `protectOutput` - Do not modify the output node or its contents whatsoever. So, only remove duplicate, redundent nodes from inputs
+  - `protectNodes` - Do not modify these specific nodes. This is more granular than `protectOutput`(which protects all of `output.Contents`).
