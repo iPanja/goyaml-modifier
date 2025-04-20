@@ -103,6 +103,6 @@ Usage:
 ### TransferRequest
 - Attempt to move values from the `input` nodes (mapping or sequence node) to the `output` node only if all the inputs agree on a value
 - HandlerOptions:
-  - `onlyUpdate` - do not add new nodes to `output`, only refactor nodes that exist within the output node.
+  - `onlyUpdate` - Do not add new nodes to `output`, only refactor nodes that exist within the output node.
   - `protectOutput` - Do not modify the output node or its contents whatsoever. So, only remove duplicate, redundent nodes from inputs
   - `protectNodes` - Do not modify these specific nodes. This is more granular than `protectOutput`(which protects all of `output.Contents`).
