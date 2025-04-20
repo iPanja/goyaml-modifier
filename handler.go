@@ -15,7 +15,8 @@ import (
 type YAMLHandler struct {
 	in *yaml.Node
 
-	NodeIterators    []func(node *yaml.Node) error
+	p                []string // Path to the node
+	NodeIterators    []func(node *yaml.Node, path []string) error
 	overrideExplicit bool // Ensure maps are only updated, and no nodes are removed
 
 	modifiedNodes []*yaml.Node // Nodes that were modified, to be used by optimizer.go
@@ -24,12 +25,13 @@ type YAMLHandler struct {
 func NewYAMLHandler(node *yaml.Node) *YAMLHandler {
 	return &YAMLHandler{
 		in:            node,
-		NodeIterators: make([]func(node *yaml.Node) error, 0),
+		p:             make([]string, 0),
+		NodeIterators: make([]func(node *yaml.Node, path []string) error, 0),
 	}
 }
 
 // AddNodeIterator stores a function that will be called on every node the handler either updates or adds inside of the Update() method
-func (h *YAMLHandler) AddNodeIterator(iter func(node *yaml.Node) error) *YAMLHandler {
+func (h *YAMLHandler) AddNodeIterator(iter func(node *yaml.Node, path []string) error) *YAMLHandler {
 	h.NodeIterators = append(h.NodeIterators, iter)
 	return h
 }
@@ -49,7 +51,7 @@ func ImportAndDecode(node *yaml.Node, v any) (*YAMLHandler, error) {
 
 func (h *YAMLHandler) applyIterators(node *yaml.Node) {
 	for _, iter := range h.NodeIterators {
-		if err := iter(node); err != nil {
+		if err := iter(node, h.p); err != nil {
 			panic(err)
 		}
 	}
@@ -195,7 +197,10 @@ func (h *YAMLHandler) updateMap(it yit.Iterator, val reflect.Value, out *yaml.No
 				continue
 			}
 
+			h.p = append(h.p, keyNode.Value)
 			h.update(fieldValue, value)
+			h.p = h.p[:len(h.p)-1]
+
 			delete(lookup, keyNode.Value)
 			c = append(c, keyNode, value)
 		} else if !explicit {
@@ -226,7 +231,10 @@ func (h *YAMLHandler) uSequence(val reflect.Value, out *yaml.Node) {
 				continue
 			}
 
+			h.p = append(h.p, fmt.Sprintf("[%d]", i))
 			h.update(e, out.Content[i])
+			h.p = h.p[:len(h.p)-1]
+
 			c = append(c, out.Content[i])
 		} else if inC {
 			// We have exhausted val, skip the remaining nodes from out.Content

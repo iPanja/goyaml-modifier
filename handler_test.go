@@ -102,23 +102,6 @@ func TestHandlerFull(t *testing.T) {
 				}
 			},
 		},
-		{
-			name:  "Specialized testing",
-			input: "everything.yaml",
-			newData: func() any {
-				return map[string]any{
-					"data": map[string]any{
-						"collections": map[string]any{
-							"nested_list": [][]int{
-								{10, 20},
-								{30, 40},
-							},
-						},
-					},
-				}
-			},
-			isFocused: true,
-		},
 	}
 
 	areAnyFocused := false
