@@ -86,7 +86,7 @@ data:
 ## Documentation
 
 ### YAMLHandler
-Used to update a `yaml.Node` as an alternative to utilizing `node.Encode()`.  It will update existing nodes in order to preserve the rest of the node that would usually be lost by directly decoding.
+Used to update a `yaml.Node` as an alternative to utilizing `node.Encode()`.  It will update existing nodes in order to preserve the rest of the node that would usually be lost by directly encoding.
 
 It also provides an accessible way to call custom functions on nodes that do get updated:
 `func(node *yaml.Node, path []string) error`.
